@@ -1,5 +1,7 @@
 # Ginkelsoft Laravel Encrypted Search Index
 
+![Tests](https://github.com/USERNAME/REPOSITORY/actions/workflows/tests.yml/badge.svg)
+
 ## Overview
 
 Modern applications that handle sensitive user data—such as healthcare, financial, or membership systems—must ensure that all personally identifiable information (PII) is properly encrypted at rest. However, standard encryption creates a practical challenge: **once data is encrypted, it can no longer be searched efficiently.**
@@ -174,19 +176,6 @@ The detached index structure scales linearly and supports millions of records ef
 | 12.x            | 8.3+                     |
 
 The package is continuously tested across all supported combinations using GitHub Actions.
-
----
-
-## Continuous Integration
-
-This repository includes automated testing for all Laravel 8–12 releases.
-Each test matrix validates functionality on PHP 8.1, 8.2, and 8.3.
-
-Example badge (replace `USERNAME/REPOSITORY` with yours):
-
-```
-![Tests](https://github.com/USERNAME/REPOSITORY/actions/workflows/tests.yml/badge.svg)
-```
 
 ---
 
