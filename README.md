@@ -1,6 +1,11 @@
 # Ginkelsoft Laravel Encrypted Search Index
 
-![Tests](https://github.com/USERNAME/REPOSITORY/actions/workflows/tests.yml/badge.svg)
+[![Tests](https://github.com/ginkelsoft-development/laravel-encrypted-search-index/actions/workflows/tests.yml/badge.svg)](https://github.com/ginkelsoft-development/laravel-encrypted-search-index/actions/workflows/tests.yml)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
+[![Total Downloads](https://img.shields.io/packagist/dt/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
+[![License](https://img.shields.io/github/license/ginkelsoft-development/laravel-encrypted-search-index.svg?style=flat-square)](LICENSE.md)
+[![Laravel](https://img.shields.io/badge/Laravel-8--12-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
+[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square&logo=php)](https://php.net)
 
 ## Overview
 
