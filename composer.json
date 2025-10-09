@@ -1,11 +1,32 @@
 {
   "name": "ginkelsoft/laravel-encrypted-search-index",
-  "description": "Searchable indexes for encrypted model fields in Laravel.",
+  "description": "Encrypted and privacy-preserving search indexing for Laravel models.",
   "type": "library",
   "license": "MIT",
+  "authors": [
+    {
+      "name": "Wietse van Ginkel",
+      "email": "info@ginkelsoft.com"
+    }
+  ],
+  "require": {
+    "php": "^7.4 || ^8.0 || ^8.1 || ^8.2 || ^8.3",
+    "illuminate/support": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
+    "illuminate/database": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0"
+  },
+  "require-dev": {
+    "orchestra/testbench": "^6.0 || ^7.0 || ^8.0 || ^9.0 || ^10.0",
+    "phpunit/phpunit": "^9.6 || ^10.0 || ^11.0"
+  },
   "autoload": {
     "psr-4": {
       "Ginkelsoft\\EncryptedSearch\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Ginkelsoft\\EncryptedSearch\\Tests\\": "tests/",
+      "Tests\\": "tests/"
     }
   },
   "extra": {
@@ -15,19 +36,6 @@
       ]
     }
   },
-  "require": {
-    "php": ">=8.2",
-    "illuminate/support": "^11.0|^12.0",
-    "illuminate/database": "^11.0|^12.0"
-  },
-  "require-dev": {
-    "orchestra/testbench": "^9.0",
-    "phpunit/phpunit": "^10.5|^11.0"
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Ginkelsoft\\EncryptedSearch\\Tests\\": "tests/",
-      "Tests\\": "tests/"
-    }
-  }
+  "minimum-stability": "stable",
+  "prefer-stable": true
 }
