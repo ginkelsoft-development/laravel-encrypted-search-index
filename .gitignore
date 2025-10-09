@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# Laravel Package .gitignore
+# ------------------------------------------------------------
+
+# Composer dependencies
+/vendor/
+composer.lock
+
+# Node dependencies
+/node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# IDE & OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Environment & local config
+.env
+.env.*
+.phpunit.result.cache
+
+# Build / cache / temporary
+/storage/
+bootstrap/cache/
+coverage/
+*.cache
+*.log
+*.tmp
+
+# Testbench / PHPUnit artifacts
+.phpunit.cache/
+.phpunit.result.cache
+tests/_output/
+tests/_support/_generated/
+
+# Package build output
+/build/
+dist/
+*.zip
+
+# Ignore generated stubs or local test DBs
+database/*.sqlite
+*.sql

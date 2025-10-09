@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+        bootstrap="vendor/autoload.php"
+        colors="true"
+        testdox="true"
+        verbose="true"
+>
+    <testsuites>
+        <testsuite name="Package Test Suite">
+            <directory suffix="Test.php">./tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <env name="APP_KEY" value="base64:8vXh4sV6JhZ8pUy8WZ4v7T+6W3lBd6pE7j28x7yT3Z8="/>
+        <env name="SEARCH_PEPPER" value="test-pepper-secret"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="APP_ENV" value="testing"/>
+    </php>
+
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">./src</directory>
+        </include>
+    </coverage>
+</phpunit>
