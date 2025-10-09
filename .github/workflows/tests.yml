@@ -1,0 +1,57 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Laravel 8–10 werkt nog op PHP 8.1
+          - php: 8.1
+            laravel: 8.*
+          - php: 8.1
+            laravel: 9.*
+          - php: 8.1
+            laravel: 10.*
+
+          # Laravel 11 vereist minimaal PHP 8.2
+          - php: 8.2
+            laravel: 11.*
+
+          # Laravel 12 werkt optimaal met PHP 8.3
+          - php: 8.3
+            laravel: 12.*
+
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo, sqlite, bcmath, intl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ matrix.php }}-${{ matrix.laravel }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Configure Laravel version
+        run: composer require "illuminate/support:${{ matrix.laravel }}" "illuminate/database:${{ matrix.laravel }}" --no-update
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction
+
+      - name: Run PHPUnit tests
+        run: vendor/bin/phpunit --testdox --colors=always
