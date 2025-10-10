@@ -173,13 +173,13 @@ The detached index structure scales linearly and supports millions of records ef
 
 ## Framework Compatibility
 
-| Laravel Version | PHP Version(s) Supported |
-| --------------- | ------------------------ |
-| 8.x             | 8.0 – 8.1                |
-| 9.x             | 8.1 – 8.2                |
-| 10.x            | 8.1 – 8.3                |
-| 11.x            | 8.2 – 8.3                |
-| 12.x            | 8.3+                     |
+| Laravel Version | Supported PHP Versions |
+|-----------------|------------------------|
+| **8.x**         | 8.0 – 8.1              |
+| **9.x**         | 8.1 – 8.2              |
+| **10.x**        | 8.1 – 8.3              |
+| **11.x**        | 8.2 – 8.3              |
+| **12.x**        | 8.3 and higher         |
 
 The package is continuously tested across all supported combinations using GitHub Actions.
 
