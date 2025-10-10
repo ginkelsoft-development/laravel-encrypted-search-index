@@ -12,16 +12,14 @@ use Ginkelsoft\EncryptedSearch\Support\Tokens;
 /**
  * Trait HasEncryptedSearchIndex
  *
- * Provides automatic encrypted search indexing for Eloquent models.
+ * Adds encrypted search indexing capabilities to Eloquent models.
  *
- * When attached to a model, this trait builds and maintains a companion index
- * table (`encrypted_search_index`) that stores deterministic, non-reversible
- * search tokens derived from model attributes.
+ * When applied, the model automatically generates deterministic, non-reversible
+ * search tokens for configured fields and stores them in the
+ * `encrypted_search_index` table. These tokens support privacy-preserving
+ * search queries while keeping plaintext data out of the database.
  *
- * These tokens enable privacy-preserving search queries (exact or prefix-based)
- * without revealing plaintext values in the database.
- *
- * Example usage:
+ * Example:
  *
  * class Client extends Model {
  *     use HasEncryptedSearchIndex;
@@ -31,39 +29,30 @@ use Ginkelsoft\EncryptedSearch\Support\Tokens;
  *         'last_names'  => ['exact' => true, 'prefix' => true],
  *     ];
  * }
- *
- * On each save or delete:
- * - Tokens are (re)generated and stored in `encrypted_search_index`.
- * - Old entries for the record are automatically replaced or removed.
- *
- * Search queries:
- *
- * Client::encryptedExact('last_names', 'vermeer')->get();
- * Client::encryptedPrefix('first_names', 'wie')->get();
  */
 trait HasEncryptedSearchIndex
 {
     /**
-     * Boot logic for the trait.
+     * Boot logic for this trait.
      *
-     * Automatically updates or removes encrypted search tokens whenever
-     * a model instance is saved, updated, deleted, or restored.
+     * Automatically rebuilds or removes search index entries on
+     * create, update, save, delete, restore, and force-delete events.
      *
      * @return void
      */
     public static function bootHasEncryptedSearchIndex(): void
     {
-        // Rebuild index when model is created, updated or saved
+        // Rebuild index on save-related events
         foreach (['created', 'updated', 'saved'] as $event) {
             static::$event(function (Model $model) {
                 $model->updateSearchIndex();
             });
         }
 
-        // Always remove tokens when model is deleted
+        // Remove index entries when deleted
         static::deleted(fn(Model $m) => $m->removeSearchIndex());
 
-        // Register forceDeleted/restored events only if the model uses SoftDeletes
+        // Register SoftDelete-specific hooks only if supported
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
             static::forceDeleted(fn(Model $m) => $m->removeSearchIndex());
             static::restored(fn(Model $m) => $m->updateSearchIndex());
@@ -71,7 +60,7 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Create or refresh all search index entries for this model instance.
+     * Create or refresh all encrypted search entries for this model instance.
      *
      * @return void
      */
@@ -86,7 +75,7 @@ trait HasEncryptedSearchIndex
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $max    = (int) config('encrypted-search.max_prefix_depth', 6);
 
-        // Remove existing entries
+        // Remove existing entries for this model
         SearchIndex::where('model_type', static::class)
             ->where('model_id', $this->getKey())
             ->delete();
@@ -99,31 +88,33 @@ trait HasEncryptedSearchIndex
                 continue;
             }
 
-            $norm = Normalizer::normalize($raw);
-            if (! $norm) {
+            $normalized = Normalizer::normalize($raw);
+            if (! $normalized) {
                 continue;
             }
 
+            // Exact matches
             if (! empty($modes['exact'])) {
                 $rows[] = [
                     'model_type' => static::class,
                     'model_id'   => $this->getKey(),
                     'field'      => $field,
                     'type'       => 'exact',
-                    'token'      => Tokens::exact($norm, $pepper),
+                    'token'      => Tokens::exact($normalized, $pepper),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
             }
 
+            // Prefix matches
             if (! empty($modes['prefix'])) {
-                foreach (Tokens::prefixes($norm, $max, $pepper) as $t) {
+                foreach (Tokens::prefixes($normalized, $max, $pepper) as $token) {
                     $rows[] = [
                         'model_type' => static::class,
                         'model_id'   => $this->getKey(),
                         'field'      => $field,
                         'type'       => 'prefix',
-                        'token'      => $t,
+                        'token'      => $token,
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
@@ -131,13 +122,13 @@ trait HasEncryptedSearchIndex
             }
         }
 
-        if ($rows) {
+        if (! empty($rows)) {
             SearchIndex::insert($rows);
         }
     }
 
     /**
-     * Remove all index entries for this model instance.
+     * Delete all encrypted search entries related to this model instance.
      *
      * @return void
      */
@@ -149,26 +140,23 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Query scope: find models by exact match on an indexed field.
+     * Scope: query models by exact encrypted token match.
      *
-     * Example:
-     * Client::encryptedExact('last_names', 'vermeer')->get();
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @param  string  $field
-     * @param  string  $term
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param Builder $query
+     * @param string $field
+     * @param string $term
+     * @return Builder
      */
     public function scopeEncryptedExact(Builder $query, string $field, string $term): Builder
     {
         $pepper = (string) config('encrypted-search.search_pepper', '');
-        $norm   = Normalizer::normalize($term);
+        $normalized = Normalizer::normalize($term);
 
-        if (! $norm) {
+        if (! $normalized) {
             return $query->whereRaw('1=0');
         }
 
-        $token = Tokens::exact($norm, $pepper);
+        $token = Tokens::exact($normalized, $pepper);
 
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $token) {
             $sub->select('model_id')
@@ -181,26 +169,27 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Query scope: find models by prefix match on an indexed field.
+     * Scope: query models by prefix-based encrypted token match.
      *
-     * Example:
-     * Client::encryptedPrefix('first_names', 'wi')->get();
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @param  string  $field
-     * @param  string  $term
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param Builder $query
+     * @param string $field
+     * @param string $term
+     * @return Builder
      */
     public function scopeEncryptedPrefix(Builder $query, string $field, string $term): Builder
     {
         $pepper = (string) config('encrypted-search.search_pepper', '');
-        $norm   = Normalizer::normalize($term);
+        $normalized = Normalizer::normalize($term);
 
-        if (! $norm) {
+        if (! $normalized) {
             return $query->whereRaw('1=0');
         }
 
-        $tokens = Tokens::prefixes($norm, (int) config('encrypted-search.max_prefix_depth', 6), $pepper);
+        $tokens = Tokens::prefixes(
+            $normalized,
+            (int) config('encrypted-search.max_prefix_depth', 6),
+            $pepper
+        );
 
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $tokens) {
             $sub->select('model_id')
@@ -213,9 +202,9 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Resolve the encrypted search configuration for this model.
+     * Retrieve the encrypted search field configuration.
      *
-     * This allows models to define searchable fields either via a
+     * Models may define configuration either via a
      * `getEncryptedSearchFields()` method or a `$encryptedSearch` property.
      *
      * @return array<string, array<string,bool>>
@@ -226,6 +215,8 @@ trait HasEncryptedSearchIndex
             return $this->getEncryptedSearchFields();
         }
 
-        return property_exists($this, 'encryptedSearch') ? $this->encryptedSearch : [];
+        return property_exists($this, 'encryptedSearch')
+            ? $this->encryptedSearch
+            : [];
     }
 }
