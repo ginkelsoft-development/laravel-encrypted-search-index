@@ -47,23 +47,6 @@ use Ginkelsoft\EncryptedSearch\Support\Tokens;
  */
 trait HasEncryptedSearchIndex
 {
-    /**
-     * Defines which fields should be included in the encrypted search index.
-     *
-     * Example:
-     * ```php
-     * protected array $encryptedSearch = [
-     *     'first_names' => ['exact' => true, 'prefix' => true],
-     *     'last_names'  => ['exact' => true],
-     * ];
-     * ```
-     *
-     * Each entry specifies whether an exact or prefix index (or both)
-     * should be generated for that field.
-     *
-     * @var array<string, array{exact?: bool, prefix?: bool}>
-     */
-    protected array $encryptedSearch = [];
 
     /**
      * Boot logic for the trait.
@@ -98,37 +81,34 @@ trait HasEncryptedSearchIndex
      * @param \Illuminate\Database\Eloquent\Model $model
      * @return void
      */
-    protected static function updateSearchIndex(Model $model): void
+    public function updateSearchIndex(): void
     {
-        if (empty($model->encryptedSearch)) {
+        $config = $this->getEncryptedSearchConfiguration();
+        
+        if (empty($config)) {
             return;
         }
 
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $max    = (int) config('encrypted-search.max_prefix_depth', 6);
 
-        // Remove previous entries for this model record
-        SearchIndex::where('model_type', get_class($model))
-            ->where('model_id', $model->getKey())
+        SearchIndex::where('model_type', static::class)
+            ->where('model_id', $this->getKey())
             ->delete();
 
-        // Generate new tokens
         $rows = [];
-        foreach ($model->encryptedSearch as $field => $modes) {
-            $raw = (string) $model->getAttribute($field);
-            if ($raw === '') {
-                continue;
-            }
+
+        foreach ($config as $field => $modes) {
+            $raw = (string) $this->getAttribute($field);
+            if ($raw === '') continue;
 
             $norm = Normalizer::normalize($raw);
-            if (! $norm) {
-                continue;
-            }
+            if (! $norm) continue;
 
             if (! empty($modes['exact'])) {
                 $rows[] = [
-                    'model_type' => get_class($model),
-                    'model_id'   => $model->getKey(),
+                    'model_type' => static::class,
+                    'model_id'   => $this->getKey(),
                     'field'      => $field,
                     'type'       => 'exact',
                     'token'      => Tokens::exact($norm, $pepper),
@@ -140,8 +120,8 @@ trait HasEncryptedSearchIndex
             if (! empty($modes['prefix'])) {
                 foreach (Tokens::prefixes($norm, $max, $pepper) as $t) {
                     $rows[] = [
-                        'model_type' => get_class($model),
-                        'model_id'   => $model->getKey(),
+                        'model_type' => static::class,
+                        'model_id'   => $this->getKey(),
                         'field'      => $field,
                         'type'       => 'prefix',
                         'token'      => $t,
@@ -235,5 +215,19 @@ trait HasEncryptedSearchIndex
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
         });
+    }
+
+    /**
+     * Get encrypted search configuration from the model.
+     */
+    protected function getEncryptedSearchConfiguration(): array
+    {
+        // Laat modellen hun eigen configuratie bepalen
+        if (method_exists($this, 'getEncryptedSearchFields')) {
+            return $this->getEncryptedSearchFields();
+        }
+
+        // Fallback: gebruik property als die er nog is
+        return property_exists($this, 'encryptedSearch') ? $this->encryptedSearch : [];
     }
 }

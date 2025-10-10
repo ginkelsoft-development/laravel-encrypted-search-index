@@ -95,7 +95,7 @@ class SearchIndexObserver
     {
         if (method_exists($model, 'updateSearchIndex')) {
             // @phpstan-ignore-next-line
-            $model::updateSearchIndex($model);
+            $model::updateSearchIndex();
         }
     }
 
@@ -113,7 +113,7 @@ class SearchIndexObserver
     {
         if (method_exists($model, 'removeSearchIndex')) {
             // @phpstan-ignore-next-line
-            $model::removeSearchIndex($model);
+            $model::removeSearchIndex();
         }
     }
 }
