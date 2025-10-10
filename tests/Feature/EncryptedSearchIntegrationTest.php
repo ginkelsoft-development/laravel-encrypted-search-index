@@ -8,49 +8,47 @@ use Illuminate\Database\Schema\Blueprint;
 use Orchestra\Testbench\TestCase;
 use Ginkelsoft\EncryptedSearch\EncryptedSearchServiceProvider;
 use Ginkelsoft\EncryptedSearch\Models\SearchIndex;
-use Tests\Models\Client;
+use Ginkelsoft\EncryptedSearch\Tests\Models\Client;
 
 /**
  * Class EncryptedSearchIntegrationTest
  *
- * Integration test suite for the Ginkelsoft Encrypted Search package.
+ * Integration tests for the Ginkelsoft Encrypted Search package.
  *
- * These tests verify that the encrypted search index:
- *  - Automatically builds entries upon model creation.
- *  - Correctly supports exact and prefix search queries.
- *  - Rebuilds successfully using the console command.
- *  - Updates when model data changes.
- *  - Removes entries when a model is deleted.
+ * This suite verifies the full lifecycle of encrypted search index behavior:
+ *  - Building index entries automatically upon model creation.
+ *  - Executing exact and prefix-based search queries.
+ *  - Rebuilding the search index via artisan command.
+ *  - Updating index entries when model data changes.
+ *  - Removing related index entries upon model deletion.
  *
- * The test uses an in-memory SQLite database and a minimal
- * `Client` model configured with the `HasEncryptedSearchIndex` trait.
+ * Uses an in-memory SQLite database to ensure full isolation and fast execution.
  *
- * @covers \Ginkelsoft\EncryptedSearch\Traits\HasEncryptedSearchIndex
- * @covers \Ginkelsoft\EncryptedSearch\Console\RebuildIndex
- * @covers \Ginkelsoft\EncryptedSearch\Models\SearchIndex
+ * @package Ginkelsoft\EncryptedSearch\Tests\Feature
+ * @covers  \Ginkelsoft\EncryptedSearch\Traits\HasEncryptedSearchIndex
+ * @covers  \Ginkelsoft\EncryptedSearch\Console\RebuildIndex
+ * @covers  \Ginkelsoft\EncryptedSearch\Models\SearchIndex
  */
 class EncryptedSearchIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
     /**
-     * Register the package service provider for the test environment.
+     * Register the package service provider for Orchestra Testbench.
      *
      * @param  \Illuminate\Foundation\Application  $app
      * @return array<int, class-string>
      */
-    protected function getPackageProviders($app)
+    protected function getPackageProviders($app): array
     {
-        return [
-            EncryptedSearchServiceProvider::class,
-        ];
+        return [EncryptedSearchServiceProvider::class];
     }
 
     /**
-     * Set up the test database schema and configuration.
+     * Set up the in-memory SQLite database schema before each test.
      *
-     * Uses an in-memory SQLite connection and creates both
-     * the model table (`clients`) and the search index table.
+     * Creates both the `clients` model table and the `encrypted_search_index`
+     * table used to store search tokens.
      *
      * @return void
      */
@@ -85,8 +83,8 @@ class EncryptedSearchIntegrationTest extends TestCase
     }
 
     /**
-     * Verify that the search index is built correctly on save and
-     * that exact match queries return the expected record.
+     * Ensure that a new model automatically builds encrypted index entries
+     * and that an exact search query retrieves the correct record.
      *
      * @return void
      */
@@ -100,7 +98,7 @@ class EncryptedSearchIntegrationTest extends TestCase
         $this->assertGreaterThan(
             0,
             SearchIndex::count(),
-            'Search index should contain entries after save().'
+            'Search index should contain entries after model creation.'
         );
 
         $results = Client::encryptedExact('last_names', 'van Ginkel')->get();
@@ -110,10 +108,10 @@ class EncryptedSearchIntegrationTest extends TestCase
     }
 
     /**
-     * Verify that prefix search returns all matching records.
+     * Verify that prefix-based searches match all records sharing
+     * a given text prefix across the configured fields.
      *
-     * Example: searching for "Wi" should match both
-     * "Wietse" and "Wilma".
+     * Example: searching for “Wi” should return both “Wietse” and “Wilma”.
      *
      * @return void
      */
@@ -130,8 +128,8 @@ class EncryptedSearchIntegrationTest extends TestCase
     }
 
     /**
-     * Verify that the index rebuild command recreates the same
-     * number of entries as before, after truncating the index table.
+     * Confirm that the index rebuild artisan command restores
+     * all expected tokens after manual deletion.
      *
      * @return void
      */
@@ -143,7 +141,7 @@ class EncryptedSearchIntegrationTest extends TestCase
         $this->assertGreaterThan(0, $initial, 'Initial index should be built.');
 
         SearchIndex::truncate();
-        $this->assertEquals(0, SearchIndex::count());
+        $this->assertEquals(0, SearchIndex::count(), 'Index table should be empty after truncate.');
 
         $this->artisan('encryption:index-rebuild', [
             'model' => Client::class,
@@ -152,13 +150,13 @@ class EncryptedSearchIntegrationTest extends TestCase
         $this->assertEquals(
             $initial,
             SearchIndex::count(),
-            'Rebuilt index should match initial count.'
+            'Rebuilt index should match initial token count.'
         );
     }
 
     /**
-     * Verify that changing a model field updates the associated
-     * index tokens, ensuring that searches remain consistent.
+     * Verify that updating a model’s encrypted fields regenerates
+     * the corresponding index tokens.
      *
      * @return void
      */
@@ -168,19 +166,18 @@ class EncryptedSearchIntegrationTest extends TestCase
         $initialTokens = SearchIndex::where('model_id', $client->id)->pluck('token')->toArray();
 
         $client->update(['last_names' => 'Smith']);
-
         $updatedTokens = SearchIndex::where('model_id', $client->id)->pluck('token')->toArray();
 
         $this->assertNotEquals(
             $initialTokens,
             $updatedTokens,
-            'Index tokens should change after updating the record.'
+            'Index tokens should change after updating an encrypted field.'
         );
     }
 
     /**
-     * Verify that deleting a model also deletes its index entries
-     * from the `encrypted_search_index` table.
+     * Ensure that deleting a model cascades removal of its
+     * related encrypted search index entries.
      *
      * @return void
      */
@@ -190,7 +187,8 @@ class EncryptedSearchIntegrationTest extends TestCase
 
         $this->assertGreaterThan(
             0,
-            SearchIndex::where('model_id', $client->id)->count()
+            SearchIndex::where('model_id', $client->id)->count(),
+            'Index should contain entries before deletion.'
         );
 
         $client->delete();
@@ -198,7 +196,7 @@ class EncryptedSearchIntegrationTest extends TestCase
         $this->assertEquals(
             0,
             SearchIndex::where('model_id', $client->id)->count(),
-            'Index entries should be deleted when the record is deleted.'
+            'Index entries should be removed after deleting the record.'
         );
     }
 }
