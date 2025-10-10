@@ -93,7 +93,8 @@ This design follows a **defense-in-depth** model: encrypted data stays secure, w
 
 ```bash
 composer require ginkelsoft/laravel-encrypted-search-index
-php artisan vendor:publish --tag=config
+php artisan vendor:publish --provider="Ginkelsoft\EncryptedSearch\EncryptedSearchServiceProvider" --tag=config
+php artisan vendor:publish --provider="Ginkelsoft\EncryptedSearch\EncryptedSearchServiceProvider" --tag=migrations
 php artisan migrate
 ```
 
