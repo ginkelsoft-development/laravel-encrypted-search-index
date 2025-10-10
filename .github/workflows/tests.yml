@@ -9,25 +9,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Laravel 9 (PHP 8.1)
+          # Laravel 9 – PHP 8.1
           - php: 8.1
             laravel: 9.*
             testbench: ^7.0
 
-          # Laravel 10 (PHP 8.2)
+          # Laravel 10 – PHP 8.2
           - php: 8.2
             laravel: 10.*
             testbench: ^8.0
 
-          # Laravel 11 (PHP 8.3)
+          # Laravel 11 – PHP 8.3
           - php: 8.3
             laravel: 11.*
             testbench: ^9.0
 
-          # Laravel 12 (PHP 8.4, voorlopig zonder testbench release)
+          # Laravel 12 – PHP 8.4 (nog geen Testbench release, gebruik voorlopig 10.x-dev)
           - php: 8.4
             laravel: 12.*
-            testbench: dev-master
+            testbench: 10.x-dev
 
     steps:
       - uses: actions/checkout@v4
@@ -40,8 +40,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer require "illuminate/support:${{ matrix.laravel }}" "illuminate/database:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-update
+          composer require "illuminate/support:${{ matrix.laravel }}" \
+                          "illuminate/database:${{ matrix.laravel }}" \
+                          "orchestra/testbench:${{ matrix.testbench }}" --no-update
           composer update --prefer-dist --no-interaction
 
-      - name: Run Tests
+      - name: Run tests
         run: vendor/bin/phpunit --testdox --colors=always

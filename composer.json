@@ -21,7 +21,7 @@
     "illuminate/support": "^9.0|^10.0|^11.0|^12.0"
   },
   "require-dev": {
-    "orchestra/testbench": "^7.0|^8.0|^9.0|dev-master",
+    "orchestra/testbench": "^7.0|^8.0|^9.0|10.x-dev",
     "phpunit/phpunit": "^9.6|^10.0|^11.0|^12.0"
   },
   "minimum-stability": "stable",
