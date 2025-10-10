@@ -2,6 +2,8 @@
 
 namespace Ginkelsoft\EncryptedSearch;
 
+use Illuminate\Support\Facades\Event;
+use Ginkelsoft\EncryptedSearch\Observers\SearchIndexObserver;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -79,5 +81,8 @@ class EncryptedSearchServiceProvider extends ServiceProvider
                 Console\RebuildIndex::class,
             ]);
         }
+
+        // 🔹 Register the observer for all Eloquent events
+        Event::listen('eloquent.*: *', SearchIndexObserver::class);
     }
 }

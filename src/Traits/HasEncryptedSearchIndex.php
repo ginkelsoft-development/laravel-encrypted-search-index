@@ -75,13 +75,21 @@ trait HasEncryptedSearchIndex
      */
     public static function bootHasEncryptedSearchIndex(): void
     {
-        static::saved(function (Model $model): void {
-            static::updateSearchIndex($model);
-        });
+        // Rebuild index when model is created, updated or saved.
+        foreach (['created', 'updated', 'saved'] as $event) {
+            static::$event(function (Model $model) {
+                static::updateSearchIndex($model);
+            });
+        }
 
-        static::deleted(function (Model $model): void {
-            static::removeSearchIndex($model);
-        });
+        // Remove tokens when model is deleted or force-deleted
+        static::deleted(fn(Model $m) => static::removeSearchIndex($m));
+        static::forceDeleted(fn(Model $m) => static::removeSearchIndex($m));
+
+        // Optional: if SoftDeletes is used, re-index on restore
+        if (method_exists(static::class, 'restored')) {
+            static::restored(fn(Model $m) => static::updateSearchIndex($m));
+        }
     }
 
     /**
