@@ -1,12 +1,39 @@
 {
   "name": "ginkelsoft/laravel-encrypted-search-index",
-  "description": "Encrypted and searchable index for Laravel models with deterministic hashing and prefix tokens.",
-  "keywords": ["laravel", "encryption", "search", "privacy", "gdpr", "secure-index"],
-  "type": "library",
+  "description": "A lightweight Laravel package that provides privacy-preserving, encrypted fulltext and prefix search support for Eloquent models.",
+  "keywords": [
+    "laravel",
+    "encrypted search",
+    "eloquent",
+    "privacy",
+    "indexing",
+    "ginkelsoft"
+  ],
   "license": "MIT",
+  "authors": [
+    {
+      "name": "Wietse van Ginkel",
+      "email": "info@ginkelsoft.com",
+      "homepage": "https://ginkelsoft.com",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": "^8.1 || ^8.2 || ^8.3 || ^8.4",
+    "illuminate/support": "^9.0 || ^10.0 || ^11.0 || ^12.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.5.10 || ^10.0 || ^11.0",
+    "orchestra/testbench": "^7.0 || ^8.0 || ^9.0 || ^10.0"
+  },
   "autoload": {
     "psr-4": {
       "Ginkelsoft\\EncryptedSearch\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Ginkelsoft\\EncryptedSearch\\Tests\\": "tests/"
     }
   },
   "extra": {
@@ -15,14 +42,6 @@
         "Ginkelsoft\\EncryptedSearch\\EncryptedSearchServiceProvider"
       ]
     }
-  },
-  "require": {
-    "php": "^8.1",
-    "illuminate/support": "^8.0|^9.0|^10.0|^11.0|^12.0"
-  },
-  "require-dev": {
-    "orchestra/testbench": "^7.0|^8.0|^9.0",
-    "phpunit/phpunit": "^10.0|^11.0"
   },
   "minimum-stability": "stable",
   "prefer-stable": true

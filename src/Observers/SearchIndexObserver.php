@@ -3,35 +3,38 @@
 namespace Ginkelsoft\EncryptedSearch\Observers;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Ginkelsoft\EncryptedSearch\Traits\HasEncryptedSearchIndex;
 
 /**
  * Class SearchIndexObserver
  *
- * A global Eloquent event listener that automatically maintains
- * encrypted search indexes for models using the
- * {@see HasEncryptedSearchIndex} trait.
+ * Synchronizes the encrypted search index with Eloquent model lifecycle events.
  *
- * This observer listens to all Eloquent model events via the wildcard pattern:
+ * This observer listens to all model-level Eloquent events and ensures that
+ * the search index remains accurate after any create, update, delete,
+ * or restore operation.
  *
- *  Event::listen('eloquent.*: *', SearchIndexObserver::class);
+ * - Only acts on models that use the {@see HasEncryptedSearchIndex} trait.
+ * - Handles soft-delete events ("restored", "forceDeleted") safely.
+ * - Prevents Laravel from attempting to call non-existent methods on models
+ *   that do not use {@see SoftDeletes}.
  *
- * It reacts to model lifecycle events such as created, updated, saved,
- * touched, restored, deleted, and forceDeleted.
+ * Typical use:
+ * The service provider registers this observer globally:
  *
- * When a model using the trait is created, updated, or touched, the
- * observer rebuilds its associated search tokens. When a model is
- * deleted or force-deleted, the corresponding index entries are removed.
+ * Event::listen('eloquent.*: *', SearchIndexObserver::class);
  *
- * @package Ginkelsoft\EncryptedSearch\Observers
+ * The observer then determines at runtime whether the model supports each event
+ * before performing index updates.
  */
 class SearchIndexObserver
 {
     /**
-     * Handles all Eloquent events emitted through the wildcard listener.
+     * Handle an incoming Eloquent event for models using encrypted search.
      *
-     * @param  string  $event    The Eloquent event name, e.g. "eloquent.saved: App\Models\Client".
-     * @param  array   $payload  The event payload — typically contains the Model instance at index 0.
+     * @param  string  $event    The full event name, e.g. "eloquent.saved: App\Models\Client".
+     * @param  array<int, mixed>  $payload  The event payload, typically [Model $model].
      * @return void
      */
     public function handle(string $event, array $payload): void
@@ -43,77 +46,93 @@ class SearchIndexObserver
         /** @var Model $model */
         $model = $payload[0];
 
-        // Only process models that use the HasEncryptedSearchIndex trait
+        // Only handle models that use the encrypted search trait
         if (! $this->usesTrait($model, HasEncryptedSearchIndex::class)) {
             return;
         }
 
         $eventLower = strtolower($event);
+        $usesSoftDeletes = $this->usesTrait($model, SoftDeletes::class);
 
-        // Handle deletion events (deleted or forceDeleted)
-        if (str_contains($eventLower, 'deleted')) {
-            $this->removeIndex($model);
+        /**
+         * Safety guard:
+         * Some Laravel versions dispatch "forceDeleted" or "restored" events
+         * even for models that do not use SoftDeletes.
+         * Skip these events to prevent BadMethodCallException errors.
+         */
+        if (
+            ! $usesSoftDeletes &&
+            (str_contains($eventLower, 'forcedeleted') || str_contains($eventLower, 'restored'))
+        ) {
             return;
         }
 
-        // Handle write and restore events that require index rebuilding
+        // Remove index entries on delete or force delete
+        if (str_contains($eventLower, 'forcedeleted')) {
+            $this->safeRemoveIndex($model);
+            return;
+        }
+
+        if (str_contains($eventLower, 'deleted')) {
+            $this->safeRemoveIndex($model);
+            return;
+        }
+
+        // Rebuild index on save, update, create, touch, or restore
         if (
-            str_contains($eventLower, 'saved')   ||
+            str_contains($eventLower, 'saved') ||
             str_contains($eventLower, 'updated') ||
             str_contains($eventLower, 'created') ||
             str_contains($eventLower, 'touched') ||
             str_contains($eventLower, 'restored')
         ) {
-            $this->rebuildIndex($model);
+            $this->safeRebuildIndex($model);
         }
     }
 
     /**
-     * Determines whether the given model uses a specific trait.
+     * Determine whether a given model uses a specific trait, recursively.
      *
-     * @param  Model   $model      The model instance to inspect.
-     * @param  string  $traitFqcn  The fully-qualified trait class name to check.
+     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @param  string  $traitFqcn
      * @return bool
      */
     protected function usesTrait(Model $model, string $traitFqcn): bool
     {
-        $uses = class_uses_recursive($model);
-        return in_array($traitFqcn, $uses, true);
+        return in_array($traitFqcn, class_uses_recursive($model), true);
     }
 
     /**
-     * Rebuilds the search index for the given model.
+     * Rebuild the search index for the given model instance, ignoring exceptions.
      *
-     * If the model defines the static method `updateSearchIndex`,
-     * it will be called directly. This method is typically defined
-     * in the {@see HasEncryptedSearchIndex} trait.
-     *
-     * @param  Model  $model  The model instance to reindex.
+     * @param  \Illuminate\Database\Eloquent\Model  $model
      * @return void
      */
-    protected function rebuildIndex(Model $model): void
+    protected function safeRebuildIndex(Model $model): void
     {
-        if (method_exists($model, 'updateSearchIndex')) {
-            // @phpstan-ignore-next-line
-            $model::updateSearchIndex();
+        try {
+            if (method_exists($model, 'updateSearchIndex')) {
+                $model->updateSearchIndex();
+            }
+        } catch (\Throwable $e) {
+            logger()->warning('[EncryptedSearch] Failed to rebuild index for ' . get_class($model) . ': ' . $e->getMessage());
         }
     }
 
     /**
-     * Removes all index entries for the given model.
+     * Remove search index entries for the given model instance, ignoring exceptions.
      *
-     * If the model defines the static method `removeSearchIndex`,
-     * it will be invoked to clear existing tokens associated with
-     * the model’s primary key.
-     *
-     * @param  Model  $model  The model instance to remove from the index.
+     * @param  \Illuminate\Database\Eloquent\Model  $model
      * @return void
      */
-    protected function removeIndex(Model $model): void
+    protected function safeRemoveIndex(Model $model): void
     {
-        if (method_exists($model, 'removeSearchIndex')) {
-            // @phpstan-ignore-next-line
-            $model::removeSearchIndex();
+        try {
+            if (method_exists($model, 'removeSearchIndex')) {
+                $model->removeSearchIndex();
+            }
+        } catch (\Throwable $e) {
+            logger()->warning('[EncryptedSearch] Failed to remove index for ' . get_class($model) . ': ' . $e->getMessage());
         }
     }
 }
