@@ -250,7 +250,7 @@ The detached index structure scales linearly and supports millions of records ef
 ## Framework Compatibility
 
 | Laravel Version | Supported PHP Versions |
-| --------------- | ---------------------- |
+|-----------------|------------------------|
 | **8.x**         | 8.0 – 8.1              |
 | **9.x**         | 8.1 – 8.2              |
 | **10.x**        | 8.1 – 8.3              |
