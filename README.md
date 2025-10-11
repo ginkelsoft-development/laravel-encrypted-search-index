@@ -4,8 +4,8 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![Total Downloads](https://img.shields.io/packagist/dt/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![License](https://img.shields.io/github/license/ginkelsoft-development/laravel-encrypted-search-index.svg?style=flat-square)](LICENSE.md)
-[![Laravel](https://img.shields.io/badge/Laravel-8--12-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
-[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square&logo=php)](https://php.net)
+[![Laravel](https://img.shields.io/badge/Laravel-8--12-brightgreen?style=flat-square\&logo=laravel)](https://laravel.com)
+[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square\&logo=php)](https://php.net)
 
 ## Overview
 
@@ -36,14 +36,15 @@ This package removes that trade-off by introducing a **detached searchable index
 * **Detached search index** — Tokens are stored separately from the main data, reducing exposure risk.
 * **Deterministic hashing with peppering** — Each token is derived from normalized text combined with a secret pepper.
 * **No blind indexes in primary tables** — Encrypted fields remain opaque; only hashed references are stored elsewhere.
-* **High scalability** — Efficient for millions of records through database indexing.
+* **High scalability** — Efficient for millions of records through database indexing or Elasticsearch.
+* **Elasticsearch integration** — Optionally store and query search tokens directly in an Elasticsearch index.
 * **Laravel-native integration** — Works directly with Eloquent models, query scopes, and model events.
 
 ---
 
 ## How It Works
 
-Each model can declare specific fields as searchable. When the model is saved, the system normalizes the field value, generates one or more hashed tokens, and stores them in a separate table named `encrypted_search_index`.
+Each model can declare specific fields as searchable. When the model is saved, the system normalizes the field value, generates one or more hashed tokens, and stores them in a separate table named `encrypted_search_index` **or** in an Elasticsearch index if configured.
 
 When you search, the package hashes your input using the same process and retrieves matching model IDs from the index.
 
@@ -56,7 +57,9 @@ For each configured field:
 
 ### 2. Token Storage
 
-All tokens are stored in `encrypted_search_index`:
+By default, all tokens are stored in the database table `encrypted_search_index`. When Elasticsearch is enabled, they are stored in the configured Elasticsearch index instead.
+
+Example structure:
 
 | model_type        | model_id | field      | type   | token  |
 | ----------------- | -------- | ---------- | ------ | ------ |
@@ -72,7 +75,72 @@ Client::encryptedExact('last_names', 'Vermeer')->get();
 Client::encryptedPrefix('first_names', 'Wie')->get();
 ```
 
-These use indexed lookups and remain performant even at scale.
+These use indexed lookups (DB or Elasticsearch) and remain performant even at scale.
+
+---
+
+## Elasticsearch Integration
+
+### Enabling Elasticsearch
+
+To enable Elasticsearch as the storage and query backend for encrypted tokens, set the following in your `.env` file:
+
+```
+ENCRYPTED_SEARCH_DRIVER=elasticsearch
+ELASTICSEARCH_HOST=http://localhost:9200
+ELASTICSEARCH_INDEX=encrypted_search
+```
+
+In `config/encrypted-search.php`:
+
+```php
+return [
+    'search_pepper' => env('SEARCH_PEPPER', ''),
+    'max_prefix_depth' => 6,
+
+    'elasticsearch' => [
+        'enabled' => env('ENCRYPTED_SEARCH_DRIVER', 'database') === 'elasticsearch',
+        'host' => env('ELASTICSEARCH_HOST', 'http://localhost:9200'),
+        'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+    ],
+];
+```
+
+When enabled, the package will **skip database writes** to `encrypted_search_index` and instead sync tokens directly to Elasticsearch via the `ElasticsearchService`.
+
+### Searching via Elasticsearch
+
+To manually query Elasticsearch for a specific token:
+
+```bash
+curl -X GET "http://localhost:9200/encrypted_search/_search?pretty" \
+-H 'Content-Type: application/json' \
+-d '{
+  "query": {
+    "term": {
+      "token.keyword": "<your-token-here>"
+    }
+  }
+}'
+```
+
+For prefix-based queries, you can match multiple tokens:
+
+```bash
+curl -X GET "http://localhost:9200/encrypted_search/_search?pretty" \
+-H 'Content-Type: application/json' \
+-d '{
+  "query": {
+    "bool": {
+      "should": [
+        { "terms": { "token.keyword": ["token1", "token2", "token3"] } }
+      ]
+    }
+  }
+}'
+```
+
+The same token-based hashing rules apply — plaintext values must first be converted into deterministic tokens.
 
 ---
 
@@ -114,6 +182,11 @@ SEARCH_PEPPER=your-random-secret-string
 return [
     'search_pepper' => env('SEARCH_PEPPER', ''),
     'max_prefix_depth' => 6,
+    'elasticsearch' => [
+        'enabled' => env('ENCRYPTED_SEARCH_DRIVER', 'database') === 'elasticsearch',
+        'host' => env('ELASTICSEARCH_HOST', 'http://localhost:9200'),
+        'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+    ],
 ];
 ```
 
@@ -139,7 +212,7 @@ class Client extends Model
 }
 ```
 
-When a record is saved, searchable tokens are automatically generated in `encrypted_search_index`.
+When a record is saved, searchable tokens are automatically generated in `encrypted_search_index` or synced to Elasticsearch.
 
 ### Searching
 
@@ -159,13 +232,16 @@ Rebuild indexes via Artisan:
 php artisan encryption:index-rebuild "App\\Models\\Client"
 ```
 
+If Elasticsearch is enabled, this will repopulate the Elasticsearch index instead of the database.
+
 ---
 
 ## Scalability and Performance
 
-* **Indexed database lookups** for efficient token search.
+* **Indexed database or Elasticsearch lookups** for efficient token search.
 * **Chunked rebuilds** for large datasets (`--chunk` option).
 * **Queue-compatible** for asynchronous index rebuilds.
+* **Elasticsearch mode** scales horizontally for enterprise use.
 
 The detached index structure scales linearly and supports millions of records efficiently.
 
