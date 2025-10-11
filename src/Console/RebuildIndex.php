@@ -85,7 +85,7 @@ class RebuildIndex extends Command
         });
 
         $this->newLine();
-        $this->info("✅ Rebuilt index for {$count} records of {$class}.");
+        $this->info("Rebuilt index for {$count} records of {$class}.");
 
         return self::SUCCESS;
     }

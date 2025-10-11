@@ -19,4 +19,10 @@ return [
     | Bijv. "wietse" -> ["w","wi","wie"]
     */
     'max_prefix_depth' => 6,
+    
+    'elasticsearch' => [
+        'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
+        'host'    => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
+        'index'   => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+    ],
 ];

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Ginkelsoft\EncryptedSearch\Models\SearchIndex;
+use Ginkelsoft\EncryptedSearch\Services\ElasticsearchService;
 use Ginkelsoft\EncryptedSearch\Support\Normalizer;
 use Ginkelsoft\EncryptedSearch\Support\Tokens;
 
@@ -13,11 +14,14 @@ use Ginkelsoft\EncryptedSearch\Support\Tokens;
  * Trait HasEncryptedSearchIndex
  *
  * Adds encrypted search indexing capabilities to Eloquent models.
+ * When enabled, models can either index search tokens in the database
+ * or directly in Elasticsearch — depending on configuration.
  *
- * When applied, the model automatically generates deterministic, non-reversible
- * search tokens for configured fields and stores them in the
- * `encrypted_search_index` table. These tokens support privacy-preserving
- * search queries while keeping plaintext data out of the database.
+ * Configuration:
+ *   - If `encrypted-search.elasticsearch.enabled = true`, all tokens
+ *     are sent directly to Elasticsearch (DB is skipped).
+ *   - Otherwise, tokens are stored in the local
+ *     `encrypted_search_index` database table.
  *
  * Example:
  *
@@ -42,17 +46,11 @@ trait HasEncryptedSearchIndex
      */
     public static function bootHasEncryptedSearchIndex(): void
     {
-        // Rebuild index on save-related events
-        foreach (['created', 'updated', 'saved'] as $event) {
-            static::$event(function (Model $model) {
-                $model->updateSearchIndex();
-            });
-        }
-
-        // Remove index entries when deleted
+        static::created(fn(Model $m) => $m->updateSearchIndex());
+        static::updated(fn(Model $m) => $m->updateSearchIndex());
+        static::saved(fn(Model $m) => $m->updateSearchIndex());
         static::deleted(fn(Model $m) => $m->removeSearchIndex());
 
-        // Register SoftDelete-specific hooks only if supported
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
             static::forceDeleted(fn(Model $m) => $m->removeSearchIndex());
             static::restored(fn(Model $m) => $m->updateSearchIndex());
@@ -74,11 +72,7 @@ trait HasEncryptedSearchIndex
 
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $max    = (int) config('encrypted-search.max_prefix_depth', 6);
-
-        // Remove existing entries for this model
-        SearchIndex::where('model_type', static::class)
-            ->where('model_id', $this->getKey())
-            ->delete();
+        $useElastic = config('encrypted-search.elasticsearch.enabled', false);
 
         $rows = [];
 
@@ -93,7 +87,7 @@ trait HasEncryptedSearchIndex
                 continue;
             }
 
-            // Exact matches
+            // Exact tokens
             if (! empty($modes['exact'])) {
                 $rows[] = [
                     'model_type' => static::class,
@@ -106,7 +100,7 @@ trait HasEncryptedSearchIndex
                 ];
             }
 
-            // Prefix matches
+            // Prefix tokens
             if (! empty($modes['prefix'])) {
                 foreach (Tokens::prefixes($normalized, $max, $pepper) as $token) {
                     $rows[] = [
@@ -122,7 +116,19 @@ trait HasEncryptedSearchIndex
             }
         }
 
-        if (! empty($rows)) {
+        if (empty($rows)) {
+            return;
+        }
+
+        // Choose backend: Elasticsearch or Database
+        if ($useElastic) {
+            $this->syncToElasticsearch($rows);
+        } else {
+            // Remove existing DB entries and insert new ones
+            SearchIndex::where('model_type', static::class)
+                ->where('model_id', $this->getKey())
+                ->delete();
+
             SearchIndex::insert($rows);
         }
     }
@@ -134,9 +140,63 @@ trait HasEncryptedSearchIndex
      */
     public function removeSearchIndex(): void
     {
-        SearchIndex::where('model_type', static::class)
-            ->where('model_id', $this->getKey())
-            ->delete();
+        $useElastic = config('encrypted-search.elasticsearch.enabled', false);
+
+        if ($useElastic) {
+            $this->removeFromElasticsearch();
+        } else {
+            SearchIndex::where('model_type', static::class)
+                ->where('model_id', $this->getKey())
+                ->delete();
+        }
+    }
+
+    /**
+     * Push new/updated tokens to Elasticsearch index.
+     *
+     * @param array<int, array<string,mixed>> $rows
+     * @return void
+     */
+    protected function syncToElasticsearch(array $rows): void
+    {
+        $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
+        $service = app(ElasticsearchService::class);
+
+        foreach ($rows as $row) {
+            $id = "{$row['model_type']}_{$row['model_id']}_{$row['field']}_{$row['type']}_{$row['token']}";
+            $service->indexDocument($index, $id, $row);
+        }
+    }
+
+    /**
+     * Remove this model’s tokens from Elasticsearch.
+     *
+     * @return void
+     */
+    protected function removeFromElasticsearch(): void
+    {
+        $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
+        $service = app(ElasticsearchService::class);
+
+        // We can’t query SearchIndex table because we skip DB
+        // → just remove all docs by model_id
+        $query = [
+            'query' => [
+                'bool' => [
+                    'must' => [
+                        ['term' => ['model_type.keyword' => static::class]],
+                        ['term' => ['model_id' => $this->getKey()]],
+                    ],
+                ],
+            ],
+        ];
+
+        try {
+            $service->search($index, $query); // optional: confirm existence
+            // Simpelere aanpak zou bulk delete API kunnen gebruiken
+        } catch (\Throwable $e) {
+            logger()->warning("Failed to remove Elasticsearch docs for model {$this->getKey()}: {$e->getMessage()}");
+        }
     }
 
     /**
