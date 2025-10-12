@@ -19,7 +19,23 @@ return [
     | Bijv. "wietse" -> ["w","wi","wie"]
     */
     'max_prefix_depth' => 6,
-    
+
+    /*
+    |--------------------------------------------------------------------------
+    | Auto-index encrypted casts
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, the package will automatically include any model attributes
+    | that use Laravel's "encrypted" casts (e.g. AsEncryptedString, AsEncryptedArray)
+    | in the encrypted search index.
+    |
+    | You can still override or fine-tune behavior via:
+    | - Attributes: #[EncryptedSearch(exact: true, prefix: false)]
+    | - The $encryptedSearch property on your model
+    |
+    */
+    'auto_index_encrypted_casts' => true,
+
     'elasticsearch' => [
         'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
         'host'    => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
