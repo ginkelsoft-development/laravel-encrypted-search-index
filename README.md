@@ -4,8 +4,9 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![Total Downloads](https://img.shields.io/packagist/dt/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![License](https://img.shields.io/github/license/ginkelsoft-development/laravel-encrypted-search-index.svg?style=flat-square)](LICENSE.md)
-[![Laravel](https://img.shields.io/badge/Laravel-8--12-brightgreen?style=flat-square\&logo=laravel)](https://laravel.com)
-[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square\&logo=php)](https://php.net)
+[![Laravel](https://img.shields.io/badge/Laravel-8--12-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
+[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square&logo=php)](https://php.net)
+[![Elasticsearch](https://img.shields.io/badge/Search-DB%20or%20Elasticsearch-ff9900?style=flat-square&logo=elasticsearch)](#elasticsearch-integration)
 
 ## Overview
 
@@ -39,7 +40,8 @@ This package removes that trade-off by introducing a **detached searchable index
 * **High scalability** — Efficient for millions of records through database indexing or Elasticsearch.
 * **Elasticsearch integration** — Optionally store and query search tokens directly in an Elasticsearch index.
 * **Laravel-native integration** — Works directly with Eloquent models, query scopes, and model events.
-
+* **Automatic field detection** — Automatically indexes fields that use an encrypted cast when enabled.
+* **Fine-grained configuration** — Supports attributes (`#[EncryptedSearch]`) and `$encryptedSearch` arrays for per-field behavior.
 ---
 
 ## How It Works
@@ -124,6 +126,9 @@ curl -X GET "http://localhost:9200/encrypted_search/_search?pretty" \
 }'
 ```
 
+Both the database and Elasticsearch drivers use the same search scopes —
+your application code remains identical regardless of which backend is active.
+
 For prefix-based queries, you can match multiple tokens:
 
 ```bash
@@ -166,6 +171,8 @@ php artisan vendor:publish --provider="Ginkelsoft\EncryptedSearch\EncryptedSearc
 php artisan migrate
 ```
 
+If you plan to use the Elasticsearch integration, make sure an Elasticsearch instance (version **8.x or newer**) is running and accessible at the host defined in your `.env` file.
+
 Then add a unique pepper to your `.env` file:
 
 ```
@@ -196,21 +203,20 @@ return [
 
 ### Model Setup
 
+If `auto_index_encrypted_casts` is enabled in the configuration (default: **true**),
+all model fields that use an `encrypted:` cast will be automatically indexed for exact search,
+even if they are not explicitly listed in `$encryptedSearch`.
+
+You can also use PHP attributes to control search behavior per field:
+
 ```php
-use Illuminate\Database\Eloquent\Model;
-use Ginkelsoft\EncryptedSearch\Traits\HasEncryptedSearchIndex;
+use Ginkelsoft\EncryptedSearch\Attributes\EncryptedSearch;
 
 class Client extends Model
 {
-    use HasEncryptedSearchIndex;
-
-    protected array $encryptedSearch = [
-        'first_names' => ['exact' => true, 'prefix' => true],
-        'last_names'  => ['exact' => true, 'prefix' => true],
-        'bsn'         => ['exact' => true],
-    ];
+    #[EncryptedSearch(exact: true, prefix: true)]
+    public string $last_names;
 }
-```
 
 When a record is saved, searchable tokens are automatically generated in `encrypted_search_index` or synced to Elasticsearch.
 
@@ -223,8 +229,17 @@ $clients = Client::encryptedExact('last_names', 'Vermeer')->get();
 // Prefix match
 $clients = Client::encryptedPrefix('first_names', 'Wie')->get();
 ```
+Attributes always override global or $encryptedSearch configuration for the same field.
 
-### Rebuilding the Index
+---
+
+#### ✅ 3. **Configuration block (insert this before `'elasticsearch' => [...]`)**
+```php
+'auto_index_encrypted_casts' => true,
+
+## Rebuilding or Syncing the Search Index
+This command automatically detects whether you are using the database or Elasticsearch driver,
+and rebuilds the appropriate index accordingly.
 
 Rebuild indexes via Artisan:
 
@@ -268,6 +283,16 @@ The package is continuously tested across all supported combinations using GitHu
 * **ISO 27001** — Aligns with confidentiality and cryptographic control standards.
 
 ---
+
+## Troubleshooting
+
+**ConnectionException (cURL error 7)**  
+Ensure your Elasticsearch container or service is running and reachable at the configured `ELASTICSEARCH_HOST`.
+
+**Missing index mappings**  
+If you haven’t created the Elasticsearch index yet, initialize it manually:
+```bash
+curl -X PUT http://localhost:9200/encrypted_search
 
 ## License
 

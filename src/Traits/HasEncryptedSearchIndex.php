@@ -14,16 +14,16 @@ use Ginkelsoft\EncryptedSearch\Support\Tokens;
  * Trait HasEncryptedSearchIndex
  *
  * Adds encrypted search indexing capabilities to Eloquent models.
- * When enabled, models can either index search tokens in the database
- * or directly in Elasticsearch — depending on configuration.
+ * Depending on configuration, the generated tokens are stored either
+ * in a local database table (`encrypted_search_index`) or directly in
+ * Elasticsearch for external indexing.
  *
  * Configuration:
- *   - If `encrypted-search.elasticsearch.enabled = true`, all tokens
- *     are sent directly to Elasticsearch (DB is skipped).
- *   - Otherwise, tokens are stored in the local
- *     `encrypted_search_index` database table.
+ * - If `encrypted-search.elasticsearch.enabled = true`, tokens are
+ *   sent directly to Elasticsearch (database index is skipped).
+ * - Otherwise, tokens are stored in the local database index.
  *
- * Example:
+ * Example usage:
  *
  * class Client extends Model {
  *     use HasEncryptedSearchIndex;
@@ -58,7 +58,8 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Create or refresh all encrypted search entries for this model instance.
+     * Build or refresh all encrypted search tokens for this model instance.
+     * Tokens are written to either the local database or Elasticsearch.
      *
      * @return void
      */
@@ -71,7 +72,7 @@ trait HasEncryptedSearchIndex
         }
 
         $pepper = (string) config('encrypted-search.search_pepper', '');
-        $max    = (int) config('encrypted-search.max_prefix_depth', 6);
+        $max = (int) config('encrypted-search.max_prefix_depth', 6);
         $useElastic = config('encrypted-search.elasticsearch.enabled', false);
 
         $rows = [];
@@ -83,12 +84,12 @@ trait HasEncryptedSearchIndex
             }
 
             $normalized = Normalizer::normalize($raw);
-            if (! $normalized) {
+            if (!$normalized) {
                 continue;
             }
 
-            // Exact tokens
-            if (! empty($modes['exact'])) {
+            // Generate exact-match tokens
+            if (!empty($modes['exact'])) {
                 $rows[] = [
                     'model_type' => static::class,
                     'model_id'   => $this->getKey(),
@@ -100,8 +101,8 @@ trait HasEncryptedSearchIndex
                 ];
             }
 
-            // Prefix tokens
-            if (! empty($modes['prefix'])) {
+            // Generate prefix-based tokens
+            if (!empty($modes['prefix'])) {
                 foreach (Tokens::prefixes($normalized, $max, $pepper) as $token) {
                     $rows[] = [
                         'model_type' => static::class,
@@ -124,7 +125,6 @@ trait HasEncryptedSearchIndex
         if ($useElastic) {
             $this->syncToElasticsearch($rows);
         } else {
-            // Remove existing DB entries and insert new ones
             SearchIndex::where('model_type', static::class)
                 ->where('model_id', $this->getKey())
                 ->delete();
@@ -134,7 +134,10 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Delete all encrypted search entries related to this model instance.
+     * Remove all search index entries related to this model instance.
+     *
+     * Depending on configuration, either the database index rows or
+     * the corresponding Elasticsearch documents are deleted.
      *
      * @return void
      */
@@ -152,9 +155,9 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Push new/updated tokens to Elasticsearch index.
+     * Push generated tokens to the configured Elasticsearch index.
      *
-     * @param array<int, array<string,mixed>> $rows
+     * @param  array<int, array<string, mixed>>  $rows
      * @return void
      */
     protected function syncToElasticsearch(array $rows): void
@@ -169,7 +172,9 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Remove this model’s tokens from Elasticsearch.
+     * Remove this model’s tokens from the configured Elasticsearch index.
+     *
+     * Uses a boolean query to match documents by model_type and model_id.
      *
      * @return void
      */
@@ -178,8 +183,6 @@ trait HasEncryptedSearchIndex
         $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
         $service = app(ElasticsearchService::class);
 
-        // We can’t query SearchIndex table because we skip DB
-        // → just remove all docs by model_id
         $query = [
             'query' => [
                 'bool' => [
@@ -192,8 +195,8 @@ trait HasEncryptedSearchIndex
         ];
 
         try {
-            $service->search($index, $query); // optional: confirm existence
-            // Simpelere aanpak zou bulk delete API kunnen gebruiken
+            $service->search($index, $query);
+            // Optional: replace with Elasticsearch delete-by-query API for optimization
         } catch (\Throwable $e) {
             logger()->warning("Failed to remove Elasticsearch docs for model {$this->getKey()}: {$e->getMessage()}");
         }
@@ -202,9 +205,9 @@ trait HasEncryptedSearchIndex
     /**
      * Scope: query models by exact encrypted token match.
      *
-     * @param Builder $query
-     * @param string $field
-     * @param string $term
+     * @param  Builder  $query
+     * @param  string  $field
+     * @param  string  $term
      * @return Builder
      */
     public function scopeEncryptedExact(Builder $query, string $field, string $term): Builder
@@ -212,7 +215,7 @@ trait HasEncryptedSearchIndex
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $normalized = Normalizer::normalize($term);
 
-        if (! $normalized) {
+        if (!$normalized) {
             return $query->whereRaw('1=0');
         }
 
@@ -231,9 +234,9 @@ trait HasEncryptedSearchIndex
     /**
      * Scope: query models by prefix-based encrypted token match.
      *
-     * @param Builder $query
-     * @param string $field
-     * @param string $term
+     * @param  Builder  $query
+     * @param  string  $field
+     * @param  string  $term
      * @return Builder
      */
     public function scopeEncryptedPrefix(Builder $query, string $field, string $term): Builder
@@ -241,7 +244,7 @@ trait HasEncryptedSearchIndex
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $normalized = Normalizer::normalize($term);
 
-        if (! $normalized) {
+        if (!$normalized) {
             return $query->whereRaw('1=0');
         }
 
@@ -262,21 +265,46 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Retrieve the encrypted search field configuration.
+     * Resolve the encrypted search configuration for this model.
      *
-     * Models may define configuration either via a
-     * `getEncryptedSearchFields()` method or a `$encryptedSearch` property.
+     * The configuration may be determined from:
+     * - auto-detected encrypted casts (if enabled),
+     * - PHP attributes (#[EncryptedSearch]),
+     * - the `$encryptedSearch` property on the model.
      *
-     * @return array<string, array<string,bool>>
+     * Priority:
+     * 1. $encryptedSearch (explicit overrides)
+     * 2. #[EncryptedSearch] attributes
+     * 3. auto-detected encrypted casts
+     *
+     * @return array<string, array<string, bool>>
      */
     protected function getEncryptedSearchConfiguration(): array
     {
-        if (method_exists($this, 'getEncryptedSearchFields')) {
-            return $this->getEncryptedSearchFields();
+        $config = [];
+
+        // Auto-detect encrypted casts (if enabled)
+        if (config('encrypted-search.auto_index_encrypted_casts', true)) {
+            foreach ($this->getCasts() as $field => $cast) {
+                if (str_contains(strtolower($cast), 'encrypted')) {
+                    $config[$field] = ['exact' => true, 'prefix' => false];
+                }
+            }
         }
 
-        return property_exists($this, 'encryptedSearch')
-            ? $this->encryptedSearch
-            : [];
+        // Detect #[EncryptedSearch] attributes
+        $reflection = new \ReflectionClass($this);
+        foreach ($reflection->getProperties() as $property) {
+            foreach ($property->getAttributes(\Ginkelsoft\EncryptedSearch\Attributes\EncryptedSearch::class) as $attr) {
+                $config[$property->getName()] = $attr->newInstance()->toArray();
+            }
+        }
+
+        // Merge with explicit $encryptedSearch property (highest priority)
+        if (property_exists($this, 'encryptedSearch')) {
+            $config = array_merge($config, $this->encryptedSearch);
+        }
+
+        return $config;
     }
 }
