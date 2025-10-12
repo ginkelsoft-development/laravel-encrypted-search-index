@@ -56,6 +56,7 @@ class EncryptedSearchIntegrationTest extends TestCase
     {
         parent::setUp();
 
+        // Configure in-memory SQLite database
         config()->set('database.default', 'testing');
         config()->set('database.connections.testing', [
             'driver'   => 'sqlite',
@@ -63,6 +64,17 @@ class EncryptedSearchIntegrationTest extends TestCase
             'prefix'   => '',
         ]);
 
+        // Disable Elasticsearch during tests (we test DB index)
+        config()->set('encrypted-search.elasticsearch.enabled', false);
+
+        // Ensure Eloquent events are active (boot model & dispatcher)
+        \Illuminate\Database\Eloquent\Model::unsetEventDispatcher();
+        \Illuminate\Database\Eloquent\Model::setEventDispatcher(app('events'));
+
+        // Boot model traits manually for Testbench
+        \Ginkelsoft\EncryptedSearch\Tests\Models\Client::boot();
+
+        // Create schema tables
         Schema::create('clients', function (Blueprint $table): void {
             $table->id();
             $table->string('first_names');
