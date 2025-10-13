@@ -11,6 +11,11 @@ class Client extends Model
 
     protected $fillable = ['first_names', 'last_names'];
 
+    protected $casts = [
+        'first_names' => 'encrypted',
+        'last_names'  => 'encrypted',
+    ];
+
     protected array $encryptedSearch = [
         'first_names' => ['exact' => true, 'prefix' => true],
         'last_names'  => ['exact' => true, 'prefix' => true],

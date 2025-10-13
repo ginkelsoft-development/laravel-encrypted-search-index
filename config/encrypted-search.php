@@ -36,7 +36,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | The maximum number of prefix levels to generate for prefix-based search.
-    | For example, the term “wietse” would generate:
+    | For example, the term "wietse" would generate:
     |   ["w", "wi", "wie", "wiet", "wiets", "wietse"]
     |
     | Increasing this value improves search precision for short terms, but
@@ -44,6 +44,29 @@ return [
     |
     */
     'max_prefix_depth' => 6,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Minimum Prefix Length
+    |--------------------------------------------------------------------------
+    |
+    | The minimum number of characters required for prefix-based searches.
+    | This prevents overly broad matches from very short search terms.
+    |
+    | For example, with min_prefix_length = 3:
+    | - Searching for "Wi" (2 chars) will return no results
+    | - Searching for "Wil" (3 chars) will work normally
+    |
+    | This helps prevent performance issues and reduces false positives
+    | when users search for very short terms like "a" or "de".
+    |
+    | Recommended values:
+    | - 2: Allow two-character searches (more flexible, more false positives)
+    | - 3: Require three characters (good balance)
+    | - 4: Require four characters (very precise, less flexible)
+    |
+    */
+    'min_prefix_length' => env('ENCRYPTED_SEARCH_MIN_PREFIX', 3),
 
     /*
     |--------------------------------------------------------------------------
@@ -82,4 +105,18 @@ return [
         'host'    => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
         'index'   => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Debug Logging
+    |--------------------------------------------------------------------------
+    |
+    | Enable debug logging for encrypted search operations. When enabled,
+    | the package will log token generation, index updates, and deletions
+    | to help with debugging and monitoring.
+    |
+    | Warning: This can generate a lot of log entries in high-traffic applications.
+    |
+    */
+    'debug' => env('ENCRYPTED_SEARCH_DEBUG', false),
 ];
