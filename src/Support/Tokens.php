@@ -46,9 +46,18 @@ class Tokens
      *
      * @return string
      *     Hex-encoded SHA-256 hash (64 characters).
+     *
+     * @throws \RuntimeException if pepper is empty
      */
     public static function exact(string $normalized, string $pepper): string
     {
+        if (empty($pepper)) {
+            throw new \RuntimeException(
+                'SEARCH_PEPPER is not configured. Set it in your .env file for security. ' .
+                'Generate a random string: openssl rand -base64 32'
+            );
+        }
+
         return hash('sha256', $normalized . $pepper);
     }
 
@@ -71,9 +80,18 @@ class Tokens
      *
      * @return string[]
      *     An array of hex-encoded SHA-256 prefix tokens.
+     *
+     * @throws \RuntimeException if pepper is empty
      */
     public static function prefixes(string $normalized, int $maxDepth, string $pepper): array
     {
+        if (empty($pepper)) {
+            throw new \RuntimeException(
+                'SEARCH_PEPPER is not configured. Set it in your .env file for security. ' .
+                'Generate a random string: openssl rand -base64 32'
+            );
+        }
+
         $out = [];
         $len = mb_strlen($normalized, 'UTF-8');
         $depth = min($maxDepth, $len);
