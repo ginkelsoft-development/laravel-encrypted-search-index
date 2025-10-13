@@ -187,14 +187,70 @@ SEARCH_PEPPER=your-random-secret-string
 
 ```php
 return [
+    // Secret pepper for token hashing
     'search_pepper' => env('SEARCH_PEPPER', ''),
+
+    // Maximum prefix depth for token generation
     'max_prefix_depth' => 6,
+
+    // Minimum prefix length for search queries (default: 3)
+    'min_prefix_length' => env('ENCRYPTED_SEARCH_MIN_PREFIX', 3),
+
+    // Automatic indexing of encrypted casts
+    'auto_index_encrypted_casts' => true,
+
+    // Elasticsearch integration
     'elasticsearch' => [
-        'enabled' => env('ENCRYPTED_SEARCH_DRIVER', 'database') === 'elasticsearch',
-        'host' => env('ELASTICSEARCH_HOST', 'http://localhost:9200'),
+        'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
+        'host' => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
         'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
     ],
+
+    // Debug logging
+    'debug' => env('ENCRYPTED_SEARCH_DEBUG', false),
 ];
+```
+
+### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `search_pepper` | `''` | Secret pepper value for token hashing. **Required for security.** |
+| `max_prefix_depth` | `6` | Maximum number of prefix characters to index (e.g., "wietse" → w, wi, wie, wiet, wiets, wietse) |
+| `min_prefix_length` | `3` | Minimum search term length for prefix queries. Prevents overly broad matches from short terms like "w" or "de". |
+| `auto_index_encrypted_casts` | `true` | Automatically index fields with `encrypted` cast types |
+| `elasticsearch.enabled` | `false` | Use Elasticsearch instead of database for token storage |
+| `elasticsearch.host` | `http://elasticsearch:9200` | Elasticsearch host URL |
+| `elasticsearch.index` | `encrypted_search` | Elasticsearch index name |
+| `debug` | `false` | Enable debug logging for index operations |
+
+### Minimum Prefix Length
+
+The `min_prefix_length` setting prevents performance issues and false positives from very short search terms.
+
+**Example with `min_prefix_length = 3` (default):**
+
+```php
+// ❌ Returns no results (too short)
+Client::encryptedPrefix('first_names', 'Wi')->get();
+
+// ✅ Works normally (meets minimum)
+Client::encryptedPrefix('first_names', 'Wil')->get();  // Finds "Wilma"
+
+// ✅ Exact search always works (ignores minimum)
+Client::encryptedExact('first_names', 'Wi')->get();
+```
+
+**Recommended values:**
+- `1`: Allow single-character searches (more flexible, more false positives)
+- `2`: Require two characters (good for short names)
+- `3`: Require three characters (recommended - good balance)
+- `4`: Require four characters (very precise, less flexible)
+
+To adjust this setting, add to your `.env`:
+
+```env
+ENCRYPTED_SEARCH_MIN_PREFIX=3
 ```
 
 ---
