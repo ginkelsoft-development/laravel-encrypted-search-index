@@ -319,7 +319,9 @@ trait HasEncryptedSearchIndex
         }
 
         return str_contains(strtolower($casts[$field]), 'encrypted');
-     } 
+    }
+
+    /**
      * Search for model IDs in Elasticsearch based on token(s).
      *
      * @param  string  $field
