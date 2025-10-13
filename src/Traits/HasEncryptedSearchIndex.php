@@ -172,9 +172,10 @@ trait HasEncryptedSearchIndex
     }
 
     /**
-     * Remove this model’s tokens from the configured Elasticsearch index.
+     * Remove this model's tokens from the configured Elasticsearch index.
      *
-     * Uses a boolean query to match documents by model_type and model_id.
+     * Uses delete-by-query to efficiently remove all documents matching
+     * the model_type and model_id.
      *
      * @return void
      */
@@ -195,8 +196,7 @@ trait HasEncryptedSearchIndex
         ];
 
         try {
-            $service->search($index, $query);
-            // Optional: replace with Elasticsearch delete-by-query API for optimization
+            $service->deleteByQuery($index, $query);
         } catch (\Throwable $e) {
             logger()->warning("Failed to remove Elasticsearch docs for model {$this->getKey()}: {$e->getMessage()}");
         }
