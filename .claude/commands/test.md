@@ -1,1 +1,0 @@
-Run all PHPUnit tests with testdox output and show results
