@@ -78,6 +78,11 @@ trait HasEncryptedSearchIndex
         $rows = [];
 
         foreach ($config as $field => $modes) {
+            // Skip fields that don't have an encrypted cast
+            if (!$this->hasEncryptedCast($field)) {
+                continue;
+            }
+
             $raw = (string) $this->getAttribute($field);
             if ($raw === '') {
                 continue;
@@ -279,6 +284,21 @@ trait HasEncryptedSearchIndex
     }
 
     /**
+     * Check if a field has an encrypted cast.
+     *
+     * @param  string  $field
+     * @return bool
+     */
+    protected function hasEncryptedCast(string $field): bool
+    {
+        $casts = $this->getCasts();
+
+        if (!isset($casts[$field])) {
+            return false;
+        }
+
+        return str_contains(strtolower($casts[$field]), 'encrypted');
+     } 
      * Search for model IDs in Elasticsearch based on token(s).
      *
      * @param  string  $field
