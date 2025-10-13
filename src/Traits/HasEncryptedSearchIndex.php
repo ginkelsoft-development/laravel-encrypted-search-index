@@ -125,10 +125,12 @@ trait HasEncryptedSearchIndex
         if ($useElastic) {
             $this->syncToElasticsearch($rows);
         } else {
+            // Remove existing tokens for this model before inserting new ones
             SearchIndex::where('model_type', static::class)
                 ->where('model_id', $this->getKey())
                 ->delete();
 
+            // Bulk insert all new tokens in a single query
             SearchIndex::insert($rows);
         }
     }
