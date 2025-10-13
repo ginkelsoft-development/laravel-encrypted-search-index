@@ -121,6 +121,16 @@ trait HasEncryptedSearchIndex
             return;
         }
 
+        // Debug logging
+        if (config('encrypted-search.debug', false)) {
+            logger()->debug('[EncryptedSearch] Updating search index', [
+                'model' => static::class,
+                'model_id' => $this->getKey(),
+                'token_count' => count($rows),
+                'backend' => $useElastic ? 'elasticsearch' : 'database',
+            ]);
+        }
+
         // Choose backend: Elasticsearch or Database
         if ($useElastic) {
             $this->syncToElasticsearch($rows);
@@ -144,6 +154,15 @@ trait HasEncryptedSearchIndex
     public function removeSearchIndex(): void
     {
         $useElastic = config('encrypted-search.elasticsearch.enabled', false);
+
+        // Debug logging
+        if (config('encrypted-search.debug', false)) {
+            logger()->debug('[EncryptedSearch] Removing search index', [
+                'model' => static::class,
+                'model_id' => $this->getKey(),
+                'backend' => $useElastic ? 'elasticsearch' : 'database',
+            ]);
+        }
 
         if ($useElastic) {
             $this->removeFromElasticsearch();
