@@ -49,14 +49,20 @@ class ElasticsearchService
      * @param  string  $index  The Elasticsearch index name.
      * @param  string  $id  The unique document ID.
      * @param  array<string, mixed>  $body  The document body to be stored.
-     * @return bool  True if successful, false otherwise.
+     * @return void
+     *
+     * @throws \RuntimeException if the request fails
      */
-    public function indexDocument(string $index, string $id, array $body): bool
+    public function indexDocument(string $index, string $id, array $body): void
     {
         $url = "{$this->host}/{$index}/_doc/{$id}";
         $response = Http::put($url, $body);
 
-        return $response->successful();
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                "Failed to index document to Elasticsearch [{$url}]: " . $response->body()
+            );
+        }
     }
 
     /**
@@ -64,14 +70,20 @@ class ElasticsearchService
      *
      * @param  string  $index  The Elasticsearch index name.
      * @param  string  $id  The document ID to delete.
-     * @return bool  True if successful, false otherwise.
+     * @return void
+     *
+     * @throws \RuntimeException if the request fails
      */
-    public function deleteDocument(string $index, string $id): bool
+    public function deleteDocument(string $index, string $id): void
     {
         $url = "{$this->host}/{$index}/_doc/{$id}";
         $response = Http::delete($url);
 
-        return $response->successful();
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                "Failed to delete document from Elasticsearch [{$url}]: " . $response->body()
+            );
+        }
     }
 
     /**
@@ -80,11 +92,19 @@ class ElasticsearchService
      * @param  string  $index  The Elasticsearch index name.
      * @param  array<string, mixed>  $query  The Elasticsearch query body.
      * @return array<int, mixed>  The array of matching documents (hits).
+     *
+     * @throws \RuntimeException if the request fails
      */
     public function search(string $index, array $query): array
     {
         $url = "{$this->host}/{$index}/_search";
         $response = Http::post($url, $query);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                "Failed to search Elasticsearch [{$url}]: " . $response->body()
+            );
+        }
 
         return $response->json('hits.hits', []);
     }
