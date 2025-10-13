@@ -53,6 +53,9 @@ class EncryptedSearchServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Validate configuration
+        $this->validateConfiguration();
+
         // Publish configuration
         $this->publishes([
             __DIR__ . '/../config/encrypted-search.php' => config_path('encrypted-search.php'),
@@ -74,5 +77,36 @@ class EncryptedSearchServiceProvider extends ServiceProvider
 
         // Listen for all Eloquent model events and route them through the observer
         Event::listen('eloquent.*: *', SearchIndexObserver::class);
+    }
+
+    /**
+     * Validate package configuration at boot time.
+     *
+     * @return void
+     *
+     * @throws \InvalidArgumentException if configuration is invalid
+     */
+    protected function validateConfiguration(): void
+    {
+        // Validate Elasticsearch configuration if enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            $host = config('encrypted-search.elasticsearch.host');
+
+            if (empty($host)) {
+                throw new \InvalidArgumentException(
+                    'Elasticsearch is enabled but ELASTICSEARCH_HOST is not configured. ' .
+                    'Set it in your .env file or disable Elasticsearch mode.'
+                );
+            }
+
+            $index = config('encrypted-search.elasticsearch.index');
+
+            if (empty($index)) {
+                throw new \InvalidArgumentException(
+                    'Elasticsearch is enabled but ELASTICSEARCH_INDEX is not configured. ' .
+                    'Set it in your .env file.'
+                );
+            }
+        }
     }
 }
