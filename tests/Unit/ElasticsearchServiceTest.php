@@ -37,9 +37,10 @@ class ElasticsearchServiceTest extends TestCase
         ]);
 
         $service = new ElasticsearchService('http://localhost:9200');
-        $result = $service->indexDocument('test_index', 'test-id', ['field' => 'value']);
+        $service->indexDocument('test_index', 'test-id', ['field' => 'value']);
 
-        $this->assertTrue($result);
+        // No exception thrown means success
+        $this->assertTrue(true);
 
         Http::assertSent(function ($request) {
             return $request->url() === 'http://localhost:9200/test_index/_doc/test-id'
@@ -49,11 +50,11 @@ class ElasticsearchServiceTest extends TestCase
     }
 
     /**
-     * Test that indexDocument returns false on failure.
+     * Test that indexDocument throws exception on failure.
      *
      * @return void
      */
-    public function test_index_document_returns_false_on_failure(): void
+    public function test_index_document_throws_on_failure(): void
     {
         Http::fake([
             'http://localhost:9200/test_index/_doc/test-id' => Http::response([
@@ -63,9 +64,10 @@ class ElasticsearchServiceTest extends TestCase
 
         $service = new ElasticsearchService('http://localhost:9200');
 
-        $result = $service->indexDocument('test_index', 'test-id', ['field' => 'value']);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Failed to index document');
 
-        $this->assertFalse($result);
+        $service->indexDocument('test_index', 'test-id', ['field' => 'value']);
     }
 
     /**
@@ -82,9 +84,10 @@ class ElasticsearchServiceTest extends TestCase
         ]);
 
         $service = new ElasticsearchService('http://localhost:9200');
-        $result = $service->deleteDocument('test_index', 'test-id');
+        $service->deleteDocument('test_index', 'test-id');
 
-        $this->assertTrue($result);
+        // No exception thrown means success
+        $this->assertTrue(true);
 
         Http::assertSent(function ($request) {
             return $request->url() === 'http://localhost:9200/test_index/_doc/test-id'
@@ -93,11 +96,11 @@ class ElasticsearchServiceTest extends TestCase
     }
 
     /**
-     * Test that deleteDocument returns false on failure.
+     * Test that deleteDocument throws exception on failure.
      *
      * @return void
      */
-    public function test_delete_document_returns_false_on_failure(): void
+    public function test_delete_document_throws_on_failure(): void
     {
         Http::fake([
             'http://localhost:9200/test_index/_doc/test-id' => Http::response([
@@ -107,9 +110,10 @@ class ElasticsearchServiceTest extends TestCase
 
         $service = new ElasticsearchService('http://localhost:9200');
 
-        $result = $service->deleteDocument('test_index', 'test-id');
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Failed to delete document');
 
-        $this->assertFalse($result);
+        $service->deleteDocument('test_index', 'test-id');
     }
 
     /**
