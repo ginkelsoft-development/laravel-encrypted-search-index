@@ -266,6 +266,49 @@ trait HasEncryptedSearchIndex
     }
 
     /**
+     * Scope: query models by exact encrypted token match across multiple fields.
+     *
+     * Searches for an exact match in any of the specified fields (OR logic).
+     *
+     * @param  Builder  $query
+     * @param  array<int, string>  $fields
+     * @param  string  $term
+     * @return Builder
+     */
+    public function scopeEncryptedExactMulti(Builder $query, array $fields, string $term): Builder
+    {
+        if (empty($fields)) {
+            return $query->whereRaw('1=0');
+        }
+
+        $pepper = (string) config('encrypted-search.search_pepper', '');
+        $normalized = Normalizer::normalize($term);
+
+        if (!$normalized) {
+            return $query->whereRaw('1=0');
+        }
+
+        $token = Tokens::exact($normalized, $pepper);
+
+        // Check if Elasticsearch is enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            $modelIds = $this->searchElasticsearchMulti($fields, $token, 'exact');
+            return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
+        }
+
+        // Fallback to database - use OR logic for multiple fields
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $token) {
+            $sub->select('model_id')
+                ->from('encrypted_search_index')
+                ->where('model_type', static::class)
+                ->whereIn('field', $fields)
+                ->where('type', 'exact')
+                ->where('token', $token)
+                ->distinct();
+        });
+    }
+
+    /**
      * Scope: query models by prefix-based encrypted token match.
      *
      * @param  Builder  $query
@@ -314,6 +357,65 @@ trait HasEncryptedSearchIndex
                 ->where('field', $field)
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
+        });
+    }
+
+    /**
+     * Scope: query models by prefix-based encrypted token match across multiple fields.
+     *
+     * Searches for a prefix match in any of the specified fields (OR logic).
+     *
+     * @param  Builder  $query
+     * @param  array<int, string>  $fields
+     * @param  string  $term
+     * @return Builder
+     */
+    public function scopeEncryptedPrefixMulti(Builder $query, array $fields, string $term): Builder
+    {
+        if (empty($fields)) {
+            return $query->whereRaw('1=0');
+        }
+
+        $pepper = (string) config('encrypted-search.search_pepper', '');
+        $minLength = (int) config('encrypted-search.min_prefix_length', 1);
+        $normalized = Normalizer::normalize($term);
+
+        if (!$normalized) {
+            return $query->whereRaw('1=0');
+        }
+
+        // Check if search term meets minimum length requirement
+        if (mb_strlen($normalized, 'UTF-8') < $minLength) {
+            return $query->whereRaw('1=0');
+        }
+
+        $tokens = Tokens::prefixes(
+            $normalized,
+            (int) config('encrypted-search.max_prefix_depth', 6),
+            $pepper,
+            $minLength
+        );
+
+        // If no tokens generated (term too short), return no results
+        if (empty($tokens)) {
+            return $query->whereRaw('1=0');
+        }
+
+        // Check if Elasticsearch is enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            $modelIds = $this->searchElasticsearchMulti($fields, $tokens, 'prefix');
+            return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
+        }
+
+        // Fallback to database - use OR logic for multiple fields
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
+            $sub->select('model_id')
+                ->from('encrypted_search_index')
+                ->where('model_type', static::class)
+                ->whereIn('field', $fields)
+                ->where('type', 'prefix')
+                ->whereIn('token', $tokens)
+                ->distinct();
         });
     }
 
@@ -377,6 +479,53 @@ trait HasEncryptedSearchIndex
                 ->toArray();
         } catch (\Throwable $e) {
             logger()->warning('[EncryptedSearch] Elasticsearch search failed: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Search for model IDs in Elasticsearch based on token(s) across multiple fields.
+     *
+     * @param  array<int, string>  $fields
+     * @param  string|array<int, string>  $tokens  Single token or array of tokens
+     * @param  string  $type  Either 'exact' or 'prefix'
+     * @return array<int, mixed>  Array of model IDs
+     */
+    protected function searchElasticsearchMulti(array $fields, $tokens, string $type): array
+    {
+        $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
+        $service = app(ElasticsearchService::class);
+
+        // Normalize tokens to array
+        $tokenArray = is_array($tokens) ? $tokens : [$tokens];
+
+        // Build Elasticsearch query with multiple fields (OR logic)
+        $query = [
+            'query' => [
+                'bool' => [
+                    'must' => [
+                        ['term' => ['model_type.keyword' => static::class]],
+                        ['terms' => ['field.keyword' => $fields]],
+                        ['term' => ['type.keyword' => $type]],
+                        ['terms' => ['token.keyword' => $tokenArray]],
+                    ],
+                ],
+            ],
+            '_source' => ['model_id'],
+            'size' => 10000,
+        ];
+
+        try {
+            $results = $service->search($index, $query);
+
+            // Extract unique model IDs from results
+            return collect($results)
+                ->pluck('_source.model_id')
+                ->unique()
+                ->values()
+                ->toArray();
+        } catch (\Throwable $e) {
+            logger()->warning('[EncryptedSearch] Elasticsearch multi-field search failed: ' . $e->getMessage());
             return [];
         }
     }
