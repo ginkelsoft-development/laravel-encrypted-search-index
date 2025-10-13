@@ -67,6 +67,9 @@ class EncryptedSearchIntegrationTest extends TestCase
         // Disable Elasticsearch during tests (we test DB index)
         config()->set('encrypted-search.elasticsearch.enabled', false);
 
+        // Set minimum prefix length to 1 for backwards compatibility in basic tests
+        config()->set('encrypted-search.min_prefix_length', 1);
+
         // Ensure Eloquent events are active (boot model & dispatcher)
         \Illuminate\Database\Eloquent\Model::unsetEventDispatcher();
         \Illuminate\Database\Eloquent\Model::setEventDispatcher(app('events'));

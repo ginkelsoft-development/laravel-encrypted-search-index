@@ -218,4 +218,81 @@ class TokensTest extends TestCase
         // The last prefix should match the exact token (full string)
         $this->assertEquals($exact, end($prefixes));
     }
+
+    /**
+     * Test that minimum length parameter filters short prefixes.
+     *
+     * @return void
+     */
+    public function test_prefixes_respects_minimum_length(): void
+    {
+        // With minLength=3, "wietse" should generate tokens for: "wie", "wiet", "wiets", "wietse"
+        $tokens = Tokens::prefixes('wietse', 6, 'test-pepper', 3);
+
+        $this->assertCount(4, $tokens, 'Should skip first 2 characters and generate 4 tokens');
+    }
+
+    /**
+     * Test that minimum length of 1 generates all prefixes (backwards compatible).
+     *
+     * @return void
+     */
+    public function test_prefixes_with_min_length_one(): void
+    {
+        // With minLength=1, should generate all prefixes
+        $tokens = Tokens::prefixes('alex', 4, 'test-pepper', 1);
+
+        $this->assertCount(4, $tokens, 'Should generate tokens for a, al, ale, alex');
+    }
+
+    /**
+     * Test that minimum length equal to string length generates one token.
+     *
+     * @return void
+     */
+    public function test_prefixes_with_min_length_equal_to_string_length(): void
+    {
+        $tokens = Tokens::prefixes('tom', 6, 'test-pepper', 3);
+
+        $this->assertCount(1, $tokens, 'Should generate only one token for "tom"');
+    }
+
+    /**
+     * Test that minimum length exceeding string length generates no tokens.
+     *
+     * @return void
+     */
+    public function test_prefixes_with_min_length_exceeding_string_length(): void
+    {
+        $tokens = Tokens::prefixes('ab', 6, 'test-pepper', 3);
+
+        $this->assertCount(0, $tokens, 'Should generate no tokens when string is shorter than minimum');
+    }
+
+    /**
+     * Test that minimum length works with UTF-8 strings.
+     *
+     * @return void
+     */
+    public function test_prefixes_minimum_length_with_utf8(): void
+    {
+        // "café" = 4 UTF-8 characters, with minLength=2
+        $tokens = Tokens::prefixes('café', 4, 'test-pepper', 2);
+
+        // Should generate tokens for: "ca", "caf", "café" (3 tokens)
+        $this->assertCount(3, $tokens);
+    }
+
+    /**
+     * Test default minimum length parameter (backwards compatibility).
+     *
+     * @return void
+     */
+    public function test_prefixes_default_minimum_length(): void
+    {
+        // Without specifying minLength, should default to 1
+        $tokens = Tokens::prefixes('alex', 4, 'test-pepper');
+
+        $this->assertCount(4, $tokens, 'Default minLength should be 1');
+    }
 }

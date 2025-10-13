@@ -73,6 +73,7 @@ trait HasEncryptedSearchIndex
 
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $max = (int) config('encrypted-search.max_prefix_depth', 6);
+        $min = (int) config('encrypted-search.min_prefix_length', 1);
         $useElastic = config('encrypted-search.elasticsearch.enabled', false);
 
         $rows = [];
@@ -108,7 +109,7 @@ trait HasEncryptedSearchIndex
 
             // Generate prefix-based tokens
             if (!empty($modes['prefix'])) {
-                foreach (Tokens::prefixes($normalized, $max, $pepper) as $token) {
+                foreach (Tokens::prefixes($normalized, $max, $pepper, $min) as $token) {
                     $rows[] = [
                         'model_type' => static::class,
                         'model_id'   => $this->getKey(),
@@ -275,17 +276,29 @@ trait HasEncryptedSearchIndex
     public function scopeEncryptedPrefix(Builder $query, string $field, string $term): Builder
     {
         $pepper = (string) config('encrypted-search.search_pepper', '');
+        $minLength = (int) config('encrypted-search.min_prefix_length', 1);
         $normalized = Normalizer::normalize($term);
 
         if (!$normalized) {
             return $query->whereRaw('1=0');
         }
 
+        // Check if search term meets minimum length requirement
+        if (mb_strlen($normalized, 'UTF-8') < $minLength) {
+            return $query->whereRaw('1=0');
+        }
+
         $tokens = Tokens::prefixes(
             $normalized,
             (int) config('encrypted-search.max_prefix_depth', 6),
-            $pepper
+            $pepper,
+            $minLength
         );
+
+        // If no tokens generated (term too short), return no results
+        if (empty($tokens)) {
+            return $query->whereRaw('1=0');
+        }
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
