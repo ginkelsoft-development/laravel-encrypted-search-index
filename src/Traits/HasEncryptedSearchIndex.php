@@ -226,6 +226,13 @@ trait HasEncryptedSearchIndex
 
         $token = Tokens::exact($normalized, $pepper);
 
+        // Check if Elasticsearch is enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            $modelIds = $this->searchElasticsearch($field, $token, 'exact');
+            return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
+        }
+
+        // Fallback to database
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $token) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
@@ -259,6 +266,13 @@ trait HasEncryptedSearchIndex
             $pepper
         );
 
+        // Check if Elasticsearch is enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            $modelIds = $this->searchElasticsearch($field, $tokens, 'prefix');
+            return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
+        }
+
+        // Fallback to database
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
@@ -284,6 +298,51 @@ trait HasEncryptedSearchIndex
         }
 
         return str_contains(strtolower($casts[$field]), 'encrypted');
+     } 
+     * Search for model IDs in Elasticsearch based on token(s).
+     *
+     * @param  string  $field
+     * @param  string|array<int, string>  $tokens  Single token or array of tokens
+     * @param  string  $type  Either 'exact' or 'prefix'
+     * @return array<int, mixed>  Array of model IDs
+     */
+    protected function searchElasticsearch(string $field, $tokens, string $type): array
+    {
+        $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
+        $service = app(ElasticsearchService::class);
+
+        // Normalize tokens to array
+        $tokenArray = is_array($tokens) ? $tokens : [$tokens];
+
+        // Build Elasticsearch query
+        $query = [
+            'query' => [
+                'bool' => [
+                    'must' => [
+                        ['term' => ['model_type.keyword' => static::class]],
+                        ['term' => ['field.keyword' => $field]],
+                        ['term' => ['type.keyword' => $type]],
+                        ['terms' => ['token.keyword' => $tokenArray]],
+                    ],
+                ],
+            ],
+            '_source' => ['model_id'],
+            'size' => 10000,
+        ];
+
+        try {
+            $results = $service->search($index, $query);
+
+            // Extract unique model IDs from results
+            return collect($results)
+                ->pluck('_source.model_id')
+                ->unique()
+                ->values()
+                ->toArray();
+        } catch (\Throwable $e) {
+            logger()->warning('[EncryptedSearch] Elasticsearch search failed: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
