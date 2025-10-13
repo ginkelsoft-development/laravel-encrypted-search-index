@@ -48,6 +48,7 @@ class HasEncryptedSearchIndexEdgeCasesTest extends TestCase
 
         config()->set('encrypted-search.elasticsearch.enabled', false);
         config()->set('encrypted-search.search_pepper', 'test-pepper-secret');
+        config()->set('encrypted-search.min_prefix_length', 1);
 
         \Illuminate\Database\Eloquent\Model::unsetEventDispatcher();
         \Illuminate\Database\Eloquent\Model::setEventDispatcher(app('events'));
