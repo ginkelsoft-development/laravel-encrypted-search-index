@@ -88,4 +88,19 @@ class ElasticsearchService
 
         return $response->json('hits.hits', []);
     }
+
+    /**
+     * Delete documents matching a query from an Elasticsearch index.
+     *
+     * @param  string  $index  The Elasticsearch index name.
+     * @param  array<string, mixed>  $query  The Elasticsearch query body.
+     * @return bool  True if successful, false otherwise.
+     */
+    public function deleteByQuery(string $index, array $query): bool
+    {
+        $url = "{$this->host}/{$index}/_delete_by_query";
+        $response = Http::post($url, $query);
+
+        return $response->successful();
+    }
 }
