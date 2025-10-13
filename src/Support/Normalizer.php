@@ -20,8 +20,11 @@ namespace Ginkelsoft\EncryptedSearch\Support;
  *
  * Features:
  * - Lowercases all text (UTF-8 safe)
- * - Optionally removes diacritics using PHP’s Normalizer (if available)
+ * - Removes diacritics using PHP's intl extension (required)
  * - Strips all non-alphanumeric characters
+ *
+ * Requirements:
+ * - The intl PHP extension must be installed for consistent normalization
  */
 class Normalizer
 {
@@ -44,11 +47,9 @@ class Normalizer
         // Convert to lowercase (UTF-8 safe)
         $s = mb_strtolower($v, 'UTF-8');
 
-        // Optionally remove diacritics if intl extension is available
-        if (class_exists(\Normalizer::class)) {
-            $s = \Normalizer::normalize($s, \Normalizer::FORM_D);
-            $s = preg_replace('/\p{M}/u', '', $s); // strip diacritics
-        }
+        // Remove diacritics using intl extension
+        $s = \Normalizer::normalize($s, \Normalizer::FORM_D);
+        $s = preg_replace('/\p{M}/u', '', $s); // strip diacritics
 
         // Retain only letters and digits
         $s = preg_replace('/[^a-z0-9]/u', '', $s);
