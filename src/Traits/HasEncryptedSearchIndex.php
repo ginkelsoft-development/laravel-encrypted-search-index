@@ -318,6 +318,170 @@ trait HasEncryptedSearchIndex
     }
 
     /**
+     * Scope: search across multiple fields with OR logic (any field matches).
+     *
+     * Efficiently searches multiple fields for the same term in a single query.
+     * Returns models where at least one field matches.
+     *
+     * Example:
+     * Client::encryptedSearchAny(['first_names', 'last_names'], 'John', 'exact')->get();
+     *
+     * @param  Builder  $query
+     * @param  array<int, string>  $fields  Array of field names to search
+     * @param  string  $term  Search term
+     * @param  string  $type  Search type: 'exact' or 'prefix'
+     * @return Builder
+     */
+    public function scopeEncryptedSearchAny(Builder $query, array $fields, string $term, string $type = 'exact'): Builder
+    {
+        if (empty($fields)) {
+            return $query->whereRaw('1=0');
+        }
+
+        $pepper = (string) config('encrypted-search.search_pepper', '');
+        $normalized = Normalizer::normalize($term);
+
+        if (!$normalized) {
+            return $query->whereRaw('1=0');
+        }
+
+        // Generate tokens based on search type
+        if ($type === 'prefix') {
+            $minLength = (int) config('encrypted-search.min_prefix_length', 1);
+
+            if (mb_strlen($normalized, 'UTF-8') < $minLength) {
+                return $query->whereRaw('1=0');
+            }
+
+            $tokens = Tokens::prefixes(
+                $normalized,
+                (int) config('encrypted-search.max_prefix_depth', 6),
+                $pepper,
+                $minLength
+            );
+
+            if (empty($tokens)) {
+                return $query->whereRaw('1=0');
+            }
+        } else {
+            $tokens = [Tokens::exact($normalized, $pepper)];
+        }
+
+        // Check if Elasticsearch is enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            $allModelIds = [];
+
+            foreach ($fields as $field) {
+                $modelIds = $this->searchElasticsearch($field, $tokens, $type);
+                $allModelIds = array_merge($allModelIds, $modelIds);
+            }
+
+            return $query->whereIn($this->getQualifiedKeyName(), array_unique($allModelIds));
+        }
+
+        // Fallback to database - use OR conditions
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens, $type) {
+            $sub->select('model_id')
+                ->from('encrypted_search_index')
+                ->where('model_type', static::class)
+                ->where('type', $type)
+                ->whereIn('field', $fields)
+                ->whereIn('token', $tokens);
+        });
+    }
+
+    /**
+     * Scope: search across multiple fields with AND logic (all fields must match).
+     *
+     * Returns models where ALL specified fields match their respective terms.
+     *
+     * Example:
+     * Client::encryptedSearchAll([
+     *     'first_names' => 'John',
+     *     'last_names' => 'Doe'
+     * ], 'exact')->get();
+     *
+     * @param  Builder  $query
+     * @param  array<string, string>  $fieldTerms  Associative array of field => term
+     * @param  string  $type  Search type: 'exact' or 'prefix'
+     * @return Builder
+     */
+    public function scopeEncryptedSearchAll(Builder $query, array $fieldTerms, string $type = 'exact'): Builder
+    {
+        if (empty($fieldTerms)) {
+            return $query->whereRaw('1=0');
+        }
+
+        $pepper = (string) config('encrypted-search.search_pepper', '');
+        $minLength = (int) config('encrypted-search.min_prefix_length', 1);
+        $maxDepth = (int) config('encrypted-search.max_prefix_depth', 6);
+
+        // Check if Elasticsearch is enabled
+        if (config('encrypted-search.elasticsearch.enabled', false)) {
+            // Start with all IDs, then intersect
+            $resultIds = null;
+
+            foreach ($fieldTerms as $field => $term) {
+                $normalized = Normalizer::normalize($term);
+
+                if (!$normalized || ($type === 'prefix' && mb_strlen($normalized, 'UTF-8') < $minLength)) {
+                    return $query->whereRaw('1=0');
+                }
+
+                $tokens = $type === 'prefix'
+                    ? Tokens::prefixes($normalized, $maxDepth, $pepper, $minLength)
+                    : [Tokens::exact($normalized, $pepper)];
+
+                if (empty($tokens)) {
+                    return $query->whereRaw('1=0');
+                }
+
+                $modelIds = $this->searchElasticsearch($field, $tokens, $type);
+
+                if ($resultIds === null) {
+                    $resultIds = $modelIds;
+                } else {
+                    $resultIds = array_intersect($resultIds, $modelIds);
+                }
+
+                if (empty($resultIds)) {
+                    return $query->whereRaw('1=0');
+                }
+            }
+
+            return $query->whereIn($this->getQualifiedKeyName(), $resultIds);
+        }
+
+        // Fallback to database - use nested queries with intersections
+        foreach ($fieldTerms as $field => $term) {
+            $normalized = Normalizer::normalize($term);
+
+            if (!$normalized || ($type === 'prefix' && mb_strlen($normalized, 'UTF-8') < $minLength)) {
+                return $query->whereRaw('1=0');
+            }
+
+            $tokens = $type === 'prefix'
+                ? Tokens::prefixes($normalized, $maxDepth, $pepper, $minLength)
+                : [Tokens::exact($normalized, $pepper)];
+
+            if (empty($tokens)) {
+                return $query->whereRaw('1=0');
+            }
+
+            $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $tokens, $type) {
+                $sub->select('model_id')
+                    ->from('encrypted_search_index')
+                    ->where('model_type', static::class)
+                    ->where('field', $field)
+                    ->where('type', $type)
+                    ->whereIn('token', $tokens);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
      * Check if a field has an encrypted cast.
      *
      * @param  string  $field
