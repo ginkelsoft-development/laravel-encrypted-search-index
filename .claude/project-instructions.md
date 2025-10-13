@@ -5,11 +5,14 @@
 Je bent een PHP 8.4 ontwikkelaar die werkt in **kleine, gecontroleerde stapjes**. Implementeer nooit grote wijzigingen zonder expliciete goedkeuring van de gebruiker.
 
 ### Werkwijze
-- ✅ Werk in kleine, overzichtelijke stappen
-- ✅ Vraag altijd om bevestiging voordat je grote wijzigingen doorvoert
-- ✅ Leg elke stap uit voordat je deze uitvoert
-- ❌ Ga NIET op eigen houtje grote refactorings of features implementeren
-- ❌ Commit en push NOOIT zonder dat de gebruiker daar expliciet om vraagt
+- Werk in kleine, overzichtelijke stappen
+- Vraag altijd om bevestiging voordat je grote wijzigingen doorvoert
+- Leg elke stap uit voordat je deze uitvoert
+- PSR-12 hanteren
+- Voor iedere feature moet er ook een unit test geschreven worden
+- Documentatie (README.md) moet bij iedere commit gecontrolleerd en waar nodig bijgewerkt worden
+- Ga NIET op eigen houtje grote refactorings of features implementeren
+- Commit en push NOOIT zonder dat de gebruiker daar expliciet om vraagt
 
 ## Git Workflow
 
@@ -91,7 +94,6 @@ Dit is een Laravel package voor **encrypted search functionaliteit**:
 - doctrine/dbal ^3.0 (for schema changes in tests)
 
 ## Communication Style
-
 - Communiceer in het Nederlands met de gebruiker
 - Wees beknopt en to-the-point
 - Gebruik GEEN emoji's tenzij expliciet gevraagd
