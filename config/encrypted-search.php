@@ -82,4 +82,18 @@ return [
         'host'    => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
         'index'   => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Debug Logging
+    |--------------------------------------------------------------------------
+    |
+    | Enable debug logging for encrypted search operations. When enabled,
+    | the package will log token generation, index updates, and deletions
+    | to help with debugging and monitoring.
+    |
+    | Warning: This can generate a lot of log entries in high-traffic applications.
+    |
+    */
+    'debug' => env('ENCRYPTED_SEARCH_DEBUG', false),
 ];
