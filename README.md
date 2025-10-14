@@ -278,13 +278,38 @@ When a record is saved, searchable tokens are automatically generated in `encryp
 
 ### Searching
 
+#### Single Field Search
+
 ```php
-// Exact match
+// Exact match on a single field
 $clients = Client::encryptedExact('last_names', 'Vermeer')->get();
 
-// Prefix match
+// Prefix match on a single field
 $clients = Client::encryptedPrefix('first_names', 'Wie')->get();
 ```
+
+#### Multi-Field Search
+
+Search across multiple fields simultaneously using OR logic:
+
+```php
+// Exact match across multiple fields
+// Finds records where 'John' appears in first_names OR last_names
+$clients = Client::encryptedExactMulti(['first_names', 'last_names'], 'John')->get();
+
+// Prefix match across multiple fields
+// Finds records where 'Wie' is a prefix of first_names OR last_names
+$clients = Client::encryptedPrefixMulti(['first_names', 'last_names'], 'Wie')->get();
+```
+
+**Use cases for multi-field search:**
+- Search for a name that could be in either first name or last name fields
+- Search across multiple encrypted fields without multiple queries
+- Implement autocomplete across multiple fields
+- Unified search experience across related fields
+
+**Note:** Multi-field searches automatically deduplicate results, so if a record matches in multiple fields, it will only appear once in the results.
+
 Attributes always override global or $encryptedSearch configuration for the same field.
 
 ---
