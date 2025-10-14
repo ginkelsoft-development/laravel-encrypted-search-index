@@ -349,7 +349,8 @@ trait HasEncryptedSearchIndex
             return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
         }
 
-        // Fallback to database
+        // Fallback to database with relevance sorting
+        // Sort by field length (shorter matches = more relevant)
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
@@ -357,7 +358,7 @@ trait HasEncryptedSearchIndex
                 ->where('field', $field)
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
-        });
+        })->orderByRaw("LENGTH({$field}) ASC");
     }
 
     /**
@@ -408,6 +409,8 @@ trait HasEncryptedSearchIndex
         }
 
         // Fallback to database - use OR logic for multiple fields
+        // Note: Multi-field searches don't have relevance sorting due to database compatibility
+        // Use single-field searches for relevance-sorted results
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
