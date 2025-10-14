@@ -349,7 +349,8 @@ trait HasEncryptedSearchIndex
             return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
         }
 
-        // Fallback to database
+        // Fallback to database with relevance sorting
+        // Sort by field length (shorter matches = more relevant)
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
@@ -357,7 +358,7 @@ trait HasEncryptedSearchIndex
                 ->where('field', $field)
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
-        });
+        })->orderByRaw("LENGTH({$field}) ASC");
     }
 
     /**
@@ -408,6 +409,8 @@ trait HasEncryptedSearchIndex
         }
 
         // Fallback to database - use OR logic for multiple fields
+        // Note: Multi-field searches don't have relevance sorting due to database compatibility
+        // Use single-field searches for relevance-sorted results
         return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
@@ -417,6 +420,107 @@ trait HasEncryptedSearchIndex
                 ->whereIn('token', $tokens)
                 ->distinct();
         });
+    }
+
+    /**
+     * Scope: search for a term across multiple fields using OR logic.
+     *
+     * @param  Builder  $query
+     * @param  array<int, string>  $fields
+     * @param  string  $term
+     * @param  string  $type  Either 'exact' or 'prefix'
+     * @return Builder
+     */
+    public function scopeEncryptedSearchAny(Builder $query, array $fields, string $term, string $type = 'exact'): Builder
+    {
+        if ($type === 'exact') {
+            return $this->scopeEncryptedExactMulti($query, $fields, $term);
+        }
+
+        return $this->scopeEncryptedPrefixMulti($query, $fields, $term);
+    }
+
+    /**
+     * Scope: search for multiple field-term pairs using AND logic.
+     *
+     * All specified field-term pairs must match for a record to be returned.
+     *
+     * @param  Builder  $query
+     * @param  array<string, string>  $fieldTerms  Associative array of field => term pairs
+     * @param  string  $type  Either 'exact' or 'prefix'
+     * @return Builder
+     */
+    public function scopeEncryptedSearchAll(Builder $query, array $fieldTerms, string $type = 'exact'): Builder
+    {
+        if (empty($fieldTerms)) {
+            return $query->whereRaw('1=0');
+        }
+
+        $pepper = (string) config('encrypted-search.search_pepper', '');
+        $minLength = (int) config('encrypted-search.min_prefix_length', 1);
+        $useElastic = config('encrypted-search.elasticsearch.enabled', false);
+
+        // Build conditions for each field-term pair
+        foreach ($fieldTerms as $field => $term) {
+            $normalized = Normalizer::normalize($term);
+
+            if (!$normalized) {
+                return $query->whereRaw('1=0');
+            }
+
+            if ($type === 'prefix') {
+                // Check minimum length for prefix searches
+                if (mb_strlen($normalized, 'UTF-8') < $minLength) {
+                    return $query->whereRaw('1=0');
+                }
+
+                $tokens = Tokens::prefixes(
+                    $normalized,
+                    (int) config('encrypted-search.max_prefix_depth', 6),
+                    $pepper,
+                    $minLength
+                );
+
+                if (empty($tokens)) {
+                    return $query->whereRaw('1=0');
+                }
+
+                // AND logic: intersect model IDs for each field-term pair
+                if ($useElastic) {
+                    $modelIds = $this->searchElasticsearch($field, $tokens, 'prefix');
+                    $query->whereIn($this->getQualifiedKeyName(), $modelIds);
+                } else {
+                    $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $tokens) {
+                        $sub->select('model_id')
+                            ->from('encrypted_search_index')
+                            ->where('model_type', static::class)
+                            ->where('field', $field)
+                            ->where('type', 'prefix')
+                            ->whereIn('token', $tokens);
+                    });
+                }
+            } else {
+                // Exact match
+                $token = Tokens::exact($normalized, $pepper);
+
+                // AND logic: intersect model IDs for each field-term pair
+                if ($useElastic) {
+                    $modelIds = $this->searchElasticsearch($field, $token, 'exact');
+                    $query->whereIn($this->getQualifiedKeyName(), $modelIds);
+                } else {
+                    $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($field, $token) {
+                        $sub->select('model_id')
+                            ->from('encrypted_search_index')
+                            ->where('model_type', static::class)
+                            ->where('field', $field)
+                            ->where('type', 'exact')
+                            ->where('token', $token);
+                    });
+                }
+            }
+        }
+
+        return $query;
     }
 
     /**
