@@ -71,11 +71,42 @@ class RebuildIndex extends Command
         $query = $class::query();
 
         $count = 0;
+        $encrypted = 0;
 
-        $query->chunk($chunk, function ($models) use (&$count) {
+        $query->chunk($chunk, function ($models) use (&$count, &$encrypted) {
             foreach ($models as $model) {
+                // Check if model has encrypted casts and ensure data is encrypted
+                if (method_exists($model, 'getCasts')) {
+                    $casts = $model->getCasts();
+                    $needsSave = false;
+
+                    foreach ($casts as $field => $cast) {
+                        if (str_contains(strtolower($cast), 'encrypted')) {
+                            // Get the raw value from database (bypassing accessors)
+                            $attributes = $model->getAttributes();
+                            $rawValue = $attributes[$field] ?? null;
+
+                            // Check if value exists and is not already encrypted
+                            // Encrypted values start with 'eyJpdiI' (base64 of '{"iv"')
+                            if ($rawValue && !str_starts_with($rawValue, 'eyJpdiI')) {
+                                // Value is not encrypted, encrypt it now
+                                $decrypted = $rawValue; // Value is already decrypted in DB
+                                $model->setAttribute($field, $decrypted); // This will encrypt via cast
+                                $needsSave = true;
+                                $encrypted++;
+                            }
+                        }
+                    }
+
+                    // Save if any fields were re-encrypted
+                    if ($needsSave) {
+                        $model->save();
+                    }
+                }
+
+                // Update search index
                 if (method_exists($model, 'updateSearchIndex')) {
-                    $model->updateSearchIndex(); // <-- FIXED
+                    $model->updateSearchIndex();
                 }
                 $count++;
             }
@@ -86,6 +117,10 @@ class RebuildIndex extends Command
 
         $this->newLine();
         $this->info("Rebuilt index for {$count} records of {$class}.");
+
+        if ($encrypted > 0) {
+            $this->info("Encrypted {$encrypted} unencrypted field(s) during rebuild.");
+        }
 
         return self::SUCCESS;
     }
