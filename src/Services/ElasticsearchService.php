@@ -112,6 +112,17 @@ class ElasticsearchService
                 "Failed to bulk index to Elasticsearch [{$url}]: " . $response->body()
             );
         }
+
+        if ($response->json('errors')) {
+            $failed = collect($response->json('items', []))
+                ->filter(fn ($item) => isset($item['index']['error']))
+                ->map(fn ($item) => $item['index']['error']['reason'] ?? 'unknown')
+                ->values();
+
+            throw new \RuntimeException(
+                "Elasticsearch bulk index had {$failed->count()} failed item(s): " . $failed->first()
+            );
+        }
     }
 
     /**
