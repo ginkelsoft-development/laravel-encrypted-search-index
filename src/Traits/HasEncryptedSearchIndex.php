@@ -666,6 +666,13 @@ trait HasEncryptedSearchIndex
      */
     protected function getEncryptedSearchConfiguration(): array
     {
+        /** @var array<class-string, array<string, array<string, bool>>> $cache */
+        static $cache = [];
+
+        if (isset($cache[static::class])) {
+            return $cache[static::class];
+        }
+
         $config = [];
 
         // Auto-detect encrypted casts (if enabled)
@@ -689,6 +696,8 @@ trait HasEncryptedSearchIndex
         if (property_exists($this, 'encryptedSearch')) {
             $config = array_merge($config, $this->encryptedSearch);
         }
+
+        $cache[static::class] = $config;
 
         return $config;
     }
