@@ -230,7 +230,9 @@ trait HasEncryptedSearchIndex
         try {
             $service->deleteByQuery($index, $query);
         } catch (\Throwable $e) {
-            logger()->warning("Failed to remove Elasticsearch docs for model {$this->getKey()}: {$e->getMessage()}");
+            logger()->error("[EncryptedSearch] Failed to remove Elasticsearch docs for " . static::class . "#{$this->getKey()}: {$e->getMessage()}");
+
+            throw $e;
         }
     }
 
