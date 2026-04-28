@@ -201,9 +201,18 @@ return [
 
     // Elasticsearch integration
     'elasticsearch' => [
-        'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
-        'host' => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
-        'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+        'enabled'     => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
+        'host'        => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
+        'index'       => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+        'max_results' => env('ENCRYPTED_SEARCH_MAX_RESULTS', 10000),
+
+        'auth' => [
+            'type'     => env('ELASTICSEARCH_AUTH_TYPE'),       // 'basic', 'api_key', 'bearer', or null
+            'username' => env('ELASTICSEARCH_USERNAME'),
+            'password' => env('ELASTICSEARCH_PASSWORD'),
+            'api_key'  => env('ELASTICSEARCH_API_KEY'),
+            'token'    => env('ELASTICSEARCH_BEARER_TOKEN'),
+        ],
     ],
 
     // Debug logging
@@ -222,6 +231,8 @@ return [
 | `elasticsearch.enabled` | `false` | Use Elasticsearch instead of database for token storage |
 | `elasticsearch.host` | `http://elasticsearch:9200` | Elasticsearch host URL |
 | `elasticsearch.index` | `encrypted_search` | Elasticsearch index name |
+| `elasticsearch.max_results` | `10000` | Maximum number of results returned from Elasticsearch queries |
+| `elasticsearch.auth.type` | `null` | Authentication type: `basic`, `api_key`, `bearer`, or `null` for none |
 | `debug` | `false` | Enable debug logging for index operations |
 
 ### Minimum Prefix Length
@@ -344,11 +355,11 @@ The detached index structure scales linearly and supports millions of records ef
 
 | Laravel Version | Supported PHP Versions |
 |-----------------|------------------------|
-| **8.x**         | 8.0 – 8.1              |
 | **9.x**         | 8.1 – 8.2              |
 | **10.x**        | 8.1 – 8.3              |
 | **11.x**        | 8.2 – 8.3              |
-| **12.x**        | 8.3 and higher         |
+| **12.x**        | 8.3 – 8.4              |
+| **13.x**        | 8.3 and higher          |
 
 The package is continuously tested across all supported combinations using GitHub Actions.
 
@@ -371,8 +382,11 @@ Ensure your Elasticsearch container or service is running and reachable at the c
 If you haven’t created the Elasticsearch index yet, initialize it manually:
 ```bash
 curl -X PUT http://localhost:9200/encrypted_search
+```
+
+---
 
 ## License
 
 MIT License
-(c) 2025 Ginkelsoft
+(c) 2026 Ginkelsoft
