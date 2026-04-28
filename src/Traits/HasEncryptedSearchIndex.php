@@ -9,6 +9,7 @@ use Ginkelsoft\EncryptedSearch\Models\SearchIndex;
 use Ginkelsoft\EncryptedSearch\Services\ElasticsearchService;
 use Ginkelsoft\EncryptedSearch\Support\Normalizer;
 use Ginkelsoft\EncryptedSearch\Support\Tokens;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Trait HasEncryptedSearchIndex
@@ -48,7 +49,6 @@ trait HasEncryptedSearchIndex
     {
         static::created(fn(Model $m) => $m->updateSearchIndex());
         static::updated(fn(Model $m) => $m->updateSearchIndex());
-        static::saved(fn(Model $m) => $m->updateSearchIndex());
         static::deleted(fn(Model $m) => $m->removeSearchIndex());
 
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
@@ -141,13 +141,13 @@ trait HasEncryptedSearchIndex
         if ($useElastic) {
             $this->syncToElasticsearch($rows);
         } else {
-            // Remove existing tokens for this model before inserting new ones
-            SearchIndex::where('model_type', static::class)
-                ->where('model_id', $this->getKey())
-                ->delete();
+            DB::transaction(function () use ($rows) {
+                SearchIndex::where('model_type', static::class)
+                    ->where('model_id', $this->getKey())
+                    ->delete();
 
-            // Bulk insert all new tokens in a single query
-            SearchIndex::insert($rows);
+                SearchIndex::insert($rows);
+            });
         }
     }
 
@@ -192,10 +192,15 @@ trait HasEncryptedSearchIndex
         $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
         $service = app(ElasticsearchService::class);
 
+        $documents = [];
         foreach ($rows as $row) {
-            $id = "{$row['model_type']}_{$row['model_id']}_{$row['field']}_{$row['type']}_{$row['token']}";
-            $service->indexDocument($index, $id, $row);
+            $documents[] = [
+                'id' => "{$row['model_type']}_{$row['model_id']}_{$row['field']}_{$row['type']}_{$row['token']}",
+                'body' => $row,
+            ];
         }
+
+        $service->bulkIndex($index, $documents);
     }
 
     /**
@@ -318,6 +323,11 @@ trait HasEncryptedSearchIndex
      */
     public function scopeEncryptedPrefix(Builder $query, string $field, string $term): Builder
     {
+        $allowed = array_keys($this->getEncryptedSearchConfiguration());
+        if (!in_array($field, $allowed, true)) {
+            return $query->whereRaw('1=0');
+        }
+
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $minLength = (int) config('encrypted-search.min_prefix_length', 1);
         $normalized = Normalizer::normalize($term);
@@ -358,7 +368,7 @@ trait HasEncryptedSearchIndex
                 ->where('field', $field)
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
-        })->orderByRaw("LENGTH({$field}) ASC");
+        })->orderByRaw('LENGTH(`' . str_replace('`', '``', $field) . '`) ASC');
     }
 
     /**
@@ -569,7 +579,7 @@ trait HasEncryptedSearchIndex
                 ],
             ],
             '_source' => ['model_id'],
-            'size' => 10000,
+            'size' => (int) config('encrypted-search.elasticsearch.max_results', 10000),
         ];
 
         try {
@@ -616,7 +626,7 @@ trait HasEncryptedSearchIndex
                 ],
             ],
             '_source' => ['model_id'],
-            'size' => 10000,
+            'size' => (int) config('encrypted-search.elasticsearch.max_results', 10000),
         ];
 
         try {

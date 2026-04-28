@@ -4,6 +4,7 @@ namespace Ginkelsoft\EncryptedSearch\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 use Ginkelsoft\EncryptedSearch\Models\SearchIndex;
 
 /**
@@ -87,8 +88,17 @@ class RebuildIndex extends Command
                             $rawValue = $attributes[$field] ?? null;
 
                             // Check if value exists and is not already encrypted
-                            // Encrypted values start with 'eyJpdiI' (base64 of '{"iv"')
-                            if ($rawValue && !str_starts_with($rawValue, 'eyJpdiI')) {
+                            $isEncrypted = false;
+                            if ($rawValue) {
+                                try {
+                                    Crypt::decryptString($rawValue);
+                                    $isEncrypted = true;
+                                } catch (\Throwable) {
+                                    $isEncrypted = false;
+                                }
+                            }
+
+                            if ($rawValue && !$isEncrypted) {
                                 // Value is not encrypted, encrypt it now
                                 $decrypted = $rawValue; // Value is already decrypted in DB
                                 $model->setAttribute($field, $decrypted); // This will encrypt via cast

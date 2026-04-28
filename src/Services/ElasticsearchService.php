@@ -2,6 +2,7 @@
 
 namespace Ginkelsoft\EncryptedSearch\Services;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -11,18 +12,7 @@ use Illuminate\Support\Facades\Http;
  * This service is used by the Encrypted Search Index package to store and
  * query deterministic encrypted tokens when Elasticsearch mode is enabled.
  *
- * It wraps basic HTTP interactions for indexing, deleting, and searching
- * documents, relying on Laravel's HTTP client for connection handling.
- *
- * Example usage:
- *
- * ```php
- * $es = app(\Ginkelsoft\EncryptedSearch\Services\ElasticsearchService::class);
- * $es->indexDocument('encrypted_search', 'unique-id', ['token' => 'abc123']);
- * $results = $es->search('encrypted_search', [
- *     'query' => ['term' => ['token.keyword' => 'abc123']]
- * ]);
- * ```
+ * Supports authentication via basic auth, API key, or bearer token.
  */
 class ElasticsearchService
 {
@@ -44,6 +34,32 @@ class ElasticsearchService
     }
 
     /**
+     * Build an HTTP request with authentication if configured.
+     *
+     * @return PendingRequest
+     */
+    protected function request(): PendingRequest
+    {
+        $request = Http::asJson();
+
+        $authType = config('encrypted-search.elasticsearch.auth.type');
+
+        return match ($authType) {
+            'basic' => $request->withBasicAuth(
+                config('encrypted-search.elasticsearch.auth.username', ''),
+                config('encrypted-search.elasticsearch.auth.password', ''),
+            ),
+            'api_key' => $request->withHeaders([
+                'Authorization' => 'ApiKey ' . config('encrypted-search.elasticsearch.auth.api_key', ''),
+            ]),
+            'bearer' => $request->withToken(
+                config('encrypted-search.elasticsearch.auth.token', ''),
+            ),
+            default => $request,
+        };
+    }
+
+    /**
      * Index or update a document in Elasticsearch.
      *
      * @param  string  $index  The Elasticsearch index name.
@@ -55,12 +71,45 @@ class ElasticsearchService
      */
     public function indexDocument(string $index, string $id, array $body): void
     {
-        $url = "{$this->host}/{$index}/_doc/{$id}";
-        $response = Http::put($url, $body);
+        $url = "{$this->host}/{$index}/_doc/" . urlencode($id);
+        $response = $this->request()->put($url, $body);
 
         if (!$response->successful()) {
             throw new \RuntimeException(
                 "Failed to index document to Elasticsearch [{$url}]: " . $response->body()
+            );
+        }
+    }
+
+    /**
+     * Index multiple documents in a single bulk request.
+     *
+     * @param  string  $index  The Elasticsearch index name.
+     * @param  array<int, array{id: string, body: array<string, mixed>}>  $documents
+     * @return void
+     *
+     * @throws \RuntimeException if the request fails
+     */
+    public function bulkIndex(string $index, array $documents): void
+    {
+        if (empty($documents)) {
+            return;
+        }
+
+        $ndjson = '';
+        foreach ($documents as $doc) {
+            $ndjson .= json_encode(['index' => ['_index' => $index, '_id' => $doc['id']]]) . "\n";
+            $ndjson .= json_encode($doc['body']) . "\n";
+        }
+
+        $url = "{$this->host}/_bulk";
+        $response = $this->request()
+            ->withBody($ndjson, 'application/x-ndjson')
+            ->post($url);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                "Failed to bulk index to Elasticsearch [{$url}]: " . $response->body()
             );
         }
     }
@@ -76,8 +125,8 @@ class ElasticsearchService
      */
     public function deleteDocument(string $index, string $id): void
     {
-        $url = "{$this->host}/{$index}/_doc/{$id}";
-        $response = Http::delete($url);
+        $url = "{$this->host}/{$index}/_doc/" . urlencode($id);
+        $response = $this->request()->delete($url);
 
         if (!$response->successful()) {
             throw new \RuntimeException(
@@ -98,7 +147,7 @@ class ElasticsearchService
     public function search(string $index, array $query): array
     {
         $url = "{$this->host}/{$index}/_search";
-        $response = Http::post($url, $query);
+        $response = $this->request()->post($url, $query);
 
         if (!$response->successful()) {
             throw new \RuntimeException(
@@ -119,7 +168,7 @@ class ElasticsearchService
     public function deleteByQuery(string $index, array $query): bool
     {
         $url = "{$this->host}/{$index}/_delete_by_query";
-        $response = Http::post($url, $query);
+        $response = $this->request()->post($url, $query);
 
         return $response->successful();
     }

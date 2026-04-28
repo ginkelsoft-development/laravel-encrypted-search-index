@@ -88,7 +88,7 @@ These use indexed lookups (DB or Elasticsearch) and remain performant even at sc
 To enable Elasticsearch as the storage and query backend for encrypted tokens, set the following in your `.env` file:
 
 ```
-ENCRYPTED_SEARCH_DRIVER=elasticsearch
+ENCRYPTED_SEARCH_ELASTIC_ENABLED=true
 ELASTICSEARCH_HOST=http://localhost:9200
 ELASTICSEARCH_INDEX=encrypted_search
 ```
@@ -273,6 +273,7 @@ class Client extends Model
     #[EncryptedSearch(exact: true, prefix: true)]
     public string $last_names;
 }
+```
 
 When a record is saved, searchable tokens are automatically generated in `encrypted_search_index` or synced to Elasticsearch.
 
@@ -313,10 +314,6 @@ $clients = Client::encryptedPrefixMulti(['first_names', 'last_names'], 'Wie')->g
 Attributes always override global or $encryptedSearch configuration for the same field.
 
 ---
-
-#### ✅ 3. **Configuration block (insert this before `'elasticsearch' => [...]`)**
-```php
-'auto_index_encrypted_casts' => true,
 
 ## Rebuilding or Syncing the Search Index
 This command automatically detects whether you are using the database or Elasticsearch driver,
