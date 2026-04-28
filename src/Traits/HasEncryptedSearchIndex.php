@@ -94,6 +94,8 @@ trait HasEncryptedSearchIndex
                 continue;
             }
 
+            $context = static::class . '|' . $field;
+
             // Generate exact-match tokens
             if (!empty($modes['exact'])) {
                 $rows[] = [
@@ -101,7 +103,7 @@ trait HasEncryptedSearchIndex
                     'model_id'   => $this->getKey(),
                     'field'      => $field,
                     'type'       => 'exact',
-                    'token'      => Tokens::exact($normalized, $pepper),
+                    'token'      => Tokens::exact($normalized, $pepper, $context),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
@@ -109,7 +111,7 @@ trait HasEncryptedSearchIndex
 
             // Generate prefix-based tokens
             if (!empty($modes['prefix'])) {
-                foreach (Tokens::prefixes($normalized, $max, $pepper, $min) as $token) {
+                foreach (Tokens::prefixes($normalized, $max, $pepper, $min, $context) as $token) {
                     $rows[] = [
                         'model_type' => static::class,
                         'model_id'   => $this->getKey(),
@@ -256,7 +258,8 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
-        $token = Tokens::exact($normalized, $pepper);
+        $context = static::class . '|' . $field;
+        $token = Tokens::exact($normalized, $pepper, $context);
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
@@ -298,22 +301,26 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
-        $token = Tokens::exact($normalized, $pepper);
+        $tokens = [];
+        foreach ($fields as $field) {
+            $context = static::class . '|' . $field;
+            $tokens[] = Tokens::exact($normalized, $pepper, $context);
+        }
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
-            $modelIds = $this->searchElasticsearchMulti($fields, $token, 'exact');
+            $modelIds = $this->searchElasticsearchMulti($fields, $tokens, 'exact');
             return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
         }
 
         // Fallback to database - use OR logic for multiple fields
-        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $token) {
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
                 ->where('model_type', static::class)
                 ->whereIn('field', $fields)
                 ->where('type', 'exact')
-                ->where('token', $token)
+                ->whereIn('token', $tokens)
                 ->distinct();
         });
     }
@@ -346,11 +353,13 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
+        $context = static::class . '|' . $field;
         $tokens = Tokens::prefixes(
             $normalized,
             (int) config('encrypted-search.max_prefix_depth', 6),
             $pepper,
-            $minLength
+            $minLength,
+            $context
         );
 
         // If no tokens generated (term too short), return no results
@@ -405,34 +414,38 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
-        $tokens = Tokens::prefixes(
-            $normalized,
-            (int) config('encrypted-search.max_prefix_depth', 6),
-            $pepper,
-            $minLength
-        );
+        $allTokens = [];
+        foreach ($fields as $field) {
+            $context = static::class . '|' . $field;
+            $fieldTokens = Tokens::prefixes(
+                $normalized,
+                (int) config('encrypted-search.max_prefix_depth', 6),
+                $pepper,
+                $minLength,
+                $context
+            );
+            $allTokens = array_merge($allTokens, $fieldTokens);
+        }
 
         // If no tokens generated (term too short), return no results
-        if (empty($tokens)) {
+        if (empty($allTokens)) {
             return $query->whereRaw('1=0');
         }
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
-            $modelIds = $this->searchElasticsearchMulti($fields, $tokens, 'prefix');
+            $modelIds = $this->searchElasticsearchMulti($fields, $allTokens, 'prefix');
             return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
         }
 
         // Fallback to database - use OR logic for multiple fields
-        // Note: Multi-field searches don't have relevance sorting due to database compatibility
-        // Use single-field searches for relevance-sorted results
-        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $allTokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
                 ->where('model_type', static::class)
                 ->whereIn('field', $fields)
                 ->where('type', 'prefix')
-                ->whereIn('token', $tokens)
+                ->whereIn('token', $allTokens)
                 ->distinct();
         });
     }
@@ -489,11 +502,13 @@ trait HasEncryptedSearchIndex
                     return $query->whereRaw('1=0');
                 }
 
+                $context = static::class . '|' . $field;
                 $tokens = Tokens::prefixes(
                     $normalized,
                     (int) config('encrypted-search.max_prefix_depth', 6),
                     $pepper,
-                    $minLength
+                    $minLength,
+                    $context
                 );
 
                 if (empty($tokens)) {
@@ -516,7 +531,8 @@ trait HasEncryptedSearchIndex
                 }
             } else {
                 // Exact match
-                $token = Tokens::exact($normalized, $pepper);
+                $context = static::class . '|' . $field;
+                $token = Tokens::exact($normalized, $pepper, $context);
 
                 // AND logic: intersect model IDs for each field-term pair
                 if ($useElastic) {

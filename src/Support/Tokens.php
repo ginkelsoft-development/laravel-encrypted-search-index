@@ -49,7 +49,7 @@ class Tokens
      *
      * @throws \RuntimeException if pepper is empty
      */
-    public static function exact(string $normalized, string $pepper): string
+    public static function exact(string $normalized, string $pepper, string $context = ''): string
     {
         if (empty($pepper)) {
             throw new \RuntimeException(
@@ -58,7 +58,9 @@ class Tokens
             );
         }
 
-        return hash('sha256', $normalized . $pepper);
+        $input = $context !== '' ? $context . '|' . $normalized : $normalized;
+
+        return hash('sha256', $input . $pepper);
     }
 
     /**
@@ -89,7 +91,7 @@ class Tokens
      *
      * @throws \RuntimeException if pepper is empty
      */
-    public static function prefixes(string $normalized, int $maxDepth, string $pepper, int $minLength = 1): array
+    public static function prefixes(string $normalized, int $maxDepth, string $pepper, int $minLength = 1, string $context = ''): array
     {
         if (empty($pepper)) {
             throw new \RuntimeException(
@@ -107,7 +109,8 @@ class Tokens
 
         for ($i = $start; $i <= $depth; $i++) {
             $prefix = mb_substr($normalized, 0, $i, 'UTF-8');
-            $out[] = hash('sha256', $prefix . $pepper);
+            $input = $context !== '' ? $context . '|' . $prefix : $prefix;
+            $out[] = hash('sha256', $input . $pepper);
         }
 
         return $out;
