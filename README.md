@@ -54,8 +54,10 @@ When you search, the package hashes your input using the same process and retrie
 
 For each configured field:
 
-* **Exact match token:** A SHA-256 hash of the normalized value + secret pepper.
+* **Exact match token:** A SHA-256 hash of the normalized value combined with a model-specific context and secret pepper.
 * **Prefix tokens:** Multiple SHA-256 hashes representing progressive prefixes of the normalized text (e.g. `w`, `wi`, `wie`).
+
+Tokens are scoped per model and field — the same value in `User.email` and `Client.email` produces different tokens, preventing cross-model correlation.
 
 ### 2. Token Storage
 
@@ -93,20 +95,7 @@ ELASTICSEARCH_HOST=http://localhost:9200
 ELASTICSEARCH_INDEX=encrypted_search
 ```
 
-In `config/encrypted-search.php`:
-
-```php
-return [
-    'search_pepper' => env('SEARCH_PEPPER', ''),
-    'max_prefix_depth' => 6,
-
-    'elasticsearch' => [
-        'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
-        'host' => env('ELASTICSEARCH_HOST', 'http://localhost:9200'),
-        'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
-    ],
-];
-```
+See the [Configuration](#configuration) section for the full `config/encrypted-search.php` reference, including authentication and result limits.
 
 When enabled, the package will **skip database writes** to `encrypted_search_index` and instead sync tokens directly to Elasticsearch via the `ElasticsearchService`.
 
@@ -151,12 +140,12 @@ The same token-based hashing rules apply — plaintext values must first be conv
 
 ## Security Model
 
-| Threat                  | Mitigation                                                        |
-| ----------------------- | ----------------------------------------------------------------- |
-| Database dump or breach | Tokens cannot be reversed (salted + peppered SHA-256).            |
-| Statistical analysis    | Tokens are detached; frequency analysis yields no correlation.    |
-| Insider access          | No sensitive data in index table; encrypted fields remain opaque. |
-| Leaked `APP_KEY`        | Irrelevant for tokens; pepper is stored separately in `.env`.     |
+| Threat                   | Mitigation                                                        |
+| ------------------------ | ----------------------------------------------------------------- |
+| Database dump or breach  | Tokens cannot be reversed (SHA-256 with pepper and context salt). |
+| Cross-model correlation  | Tokens are scoped per model and field; same value produces different tokens across models. |
+| Insider access           | No sensitive data in index table; encrypted fields remain opaque. |
+| Leaked `APP_KEY`         | Irrelevant for tokens; pepper is stored separately in `.env`.     |
 
 This design follows a **defense-in-depth** model: encrypted data stays secure, while search operations remain practical.
 
