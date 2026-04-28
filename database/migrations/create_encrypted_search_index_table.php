@@ -44,8 +44,8 @@ return new class extends Migration
             // The fully qualified model class name (e.g. App\Models\Client)
             $table->string('model_type');
 
-            // The primary key of the model this token belongs to
-            $table->unsignedBigInteger('model_id');
+            // The primary key of the model this token belongs to (string to support ULIDs/UUIDs)
+            $table->string('model_id', 36);
 
             // The model field (e.g. "last_names") from which this token was derived
             $table->string('field');

@@ -101,9 +101,19 @@ return [
     |
     */
     'elasticsearch' => [
-        'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
-        'host'    => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
-        'index'   => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+        'enabled'     => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
+        'host'        => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
+        'index'       => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+        'max_results' => env('ENCRYPTED_SEARCH_MAX_RESULTS', 10000),
+
+        // Authentication: 'basic', 'api_key', 'bearer', or null for none
+        'auth' => [
+            'type'     => env('ELASTICSEARCH_AUTH_TYPE'),
+            'username' => env('ELASTICSEARCH_USERNAME'),
+            'password' => env('ELASTICSEARCH_PASSWORD'),
+            'api_key'  => env('ELASTICSEARCH_API_KEY'),
+            'token'    => env('ELASTICSEARCH_BEARER_TOKEN'),
+        ],
     ],
 
     /*
