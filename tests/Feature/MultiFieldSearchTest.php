@@ -68,7 +68,7 @@ class MultiFieldSearchTest extends TestCase
         Schema::create('encrypted_search_index', function (Blueprint $table): void {
             $table->id();
             $table->string('model_type');
-            $table->unsignedBigInteger('model_id');
+            $table->string('model_id', 36);
             $table->string('field');
             $table->string('type');
             $table->string('token');
@@ -77,8 +77,8 @@ class MultiFieldSearchTest extends TestCase
         });
     }
 
-    /** @test */
-    public function it_can_search_exact_match_across_multiple_fields(): void
+
+    public function test_it_can_search_exact_match_across_multiple_fields(): void
     {
         // Create test clients
         $client1 = Client::create([
@@ -108,8 +108,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertNotContains($client2->id, $results);
     }
 
-    /** @test */
-    public function it_can_search_prefix_match_across_multiple_fields(): void
+    public function test_it_can_search_prefix_match_across_multiple_fields(): void
     {
         $client1 = Client::create([
             'first_names' => 'Wietse',
@@ -138,8 +137,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertNotContains($client3->id, $results);
     }
 
-    /** @test */
-    public function exact_multi_returns_unique_results_when_matching_multiple_fields(): void
+    public function test_exact_multi_returns_unique_results_when_matching_multiple_fields(): void
     {
         // Create client where search term appears in multiple fields
         $client = Client::create([
@@ -155,8 +153,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertEquals($client->id, $results->first()->id);
     }
 
-    /** @test */
-    public function prefix_multi_returns_unique_results_when_matching_multiple_fields(): void
+    public function test_prefix_multi_returns_unique_results_when_matching_multiple_fields(): void
     {
         $client = Client::create([
             'first_names' => 'Alexander',
@@ -171,8 +168,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertEquals($client->id, $results->first()->id);
     }
 
-    /** @test */
-    public function exact_multi_returns_no_results_when_no_fields_match(): void
+    public function test_exact_multi_returns_no_results_when_no_fields_match(): void
     {
         Client::create([
             'first_names' => 'John',
@@ -185,8 +181,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(0, $results);
     }
 
-    /** @test */
-    public function prefix_multi_returns_no_results_when_no_fields_match(): void
+    public function test_prefix_multi_returns_no_results_when_no_fields_match(): void
     {
         Client::create([
             'first_names' => 'John',
@@ -199,8 +194,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(0, $results);
     }
 
-    /** @test */
-    public function exact_multi_with_empty_fields_array_returns_no_results(): void
+    public function test_exact_multi_with_empty_fields_array_returns_no_results(): void
     {
         Client::create([
             'first_names' => 'John',
@@ -212,8 +206,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(0, $results);
     }
 
-    /** @test */
-    public function prefix_multi_with_empty_fields_array_returns_no_results(): void
+    public function test_prefix_multi_with_empty_fields_array_returns_no_results(): void
     {
         Client::create([
             'first_names' => 'John',
@@ -225,8 +218,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(0, $results);
     }
 
-    /** @test */
-    public function exact_multi_with_empty_search_term_returns_no_results(): void
+    public function test_exact_multi_with_empty_search_term_returns_no_results(): void
     {
         Client::create([
             'first_names' => 'John',
@@ -238,8 +230,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(0, $results);
     }
 
-    /** @test */
-    public function prefix_multi_with_empty_search_term_returns_no_results(): void
+    public function test_prefix_multi_with_empty_search_term_returns_no_results(): void
     {
         Client::create([
             'first_names' => 'John',
@@ -251,8 +242,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(0, $results);
     }
 
-    /** @test */
-    public function exact_multi_search_is_case_insensitive(): void
+    public function test_exact_multi_search_is_case_insensitive(): void
     {
         $client = Client::create([
             'first_names' => 'JOHN',
@@ -266,8 +256,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertContains($client->id, $results);
     }
 
-    /** @test */
-    public function prefix_multi_search_is_case_insensitive(): void
+    public function test_prefix_multi_search_is_case_insensitive(): void
     {
         $client = Client::create([
             'first_names' => 'JOHN',
@@ -281,8 +270,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertContains($client->id, $results);
     }
 
-    /** @test */
-    public function exact_multi_handles_diacritics_consistently(): void
+    public function test_exact_multi_handles_diacritics_consistently(): void
     {
         $client = Client::create([
             'first_names' => 'José',
@@ -296,8 +284,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertContains($client->id, $results);
     }
 
-    /** @test */
-    public function prefix_multi_handles_diacritics_consistently(): void
+    public function test_prefix_multi_handles_diacritics_consistently(): void
     {
         $client = Client::create([
             'first_names' => 'José',
@@ -311,8 +298,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertContains($client->id, $results);
     }
 
-    /** @test */
-    public function prefix_multi_respects_minimum_length_requirement(): void
+    public function test_prefix_multi_respects_minimum_length_requirement(): void
     {
         config(['encrypted-search.min_prefix_length' => 3]);
 
@@ -330,8 +316,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertCount(1, $results);
     }
 
-    /** @test */
-    public function exact_multi_can_search_single_field(): void
+    public function test_exact_multi_can_search_single_field(): void
     {
         $client = Client::create([
             'first_names' => 'John',
@@ -346,8 +331,7 @@ class MultiFieldSearchTest extends TestCase
         $this->assertContains($client->id, $results);
     }
 
-    /** @test */
-    public function prefix_multi_can_search_single_field(): void
+    public function test_prefix_multi_can_search_single_field(): void
     {
         $client = Client::create([
             'first_names' => 'John',

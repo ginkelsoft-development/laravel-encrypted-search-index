@@ -9,6 +9,7 @@ use Ginkelsoft\EncryptedSearch\Models\SearchIndex;
 use Ginkelsoft\EncryptedSearch\Services\ElasticsearchService;
 use Ginkelsoft\EncryptedSearch\Support\Normalizer;
 use Ginkelsoft\EncryptedSearch\Support\Tokens;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Trait HasEncryptedSearchIndex
@@ -48,7 +49,6 @@ trait HasEncryptedSearchIndex
     {
         static::created(fn(Model $m) => $m->updateSearchIndex());
         static::updated(fn(Model $m) => $m->updateSearchIndex());
-        static::saved(fn(Model $m) => $m->updateSearchIndex());
         static::deleted(fn(Model $m) => $m->removeSearchIndex());
 
         if (in_array(SoftDeletes::class, class_uses_recursive(static::class), true)) {
@@ -94,6 +94,8 @@ trait HasEncryptedSearchIndex
                 continue;
             }
 
+            $context = static::class . '|' . $field;
+
             // Generate exact-match tokens
             if (!empty($modes['exact'])) {
                 $rows[] = [
@@ -101,7 +103,7 @@ trait HasEncryptedSearchIndex
                     'model_id'   => $this->getKey(),
                     'field'      => $field,
                     'type'       => 'exact',
-                    'token'      => Tokens::exact($normalized, $pepper),
+                    'token'      => Tokens::exact($normalized, $pepper, $context),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
@@ -109,7 +111,7 @@ trait HasEncryptedSearchIndex
 
             // Generate prefix-based tokens
             if (!empty($modes['prefix'])) {
-                foreach (Tokens::prefixes($normalized, $max, $pepper, $min) as $token) {
+                foreach (Tokens::prefixes($normalized, $max, $pepper, $min, $context) as $token) {
                     $rows[] = [
                         'model_type' => static::class,
                         'model_id'   => $this->getKey(),
@@ -141,13 +143,13 @@ trait HasEncryptedSearchIndex
         if ($useElastic) {
             $this->syncToElasticsearch($rows);
         } else {
-            // Remove existing tokens for this model before inserting new ones
-            SearchIndex::where('model_type', static::class)
-                ->where('model_id', $this->getKey())
-                ->delete();
+            DB::transaction(function () use ($rows) {
+                SearchIndex::where('model_type', static::class)
+                    ->where('model_id', $this->getKey())
+                    ->delete();
 
-            // Bulk insert all new tokens in a single query
-            SearchIndex::insert($rows);
+                SearchIndex::insert($rows);
+            });
         }
     }
 
@@ -192,10 +194,15 @@ trait HasEncryptedSearchIndex
         $index = config('encrypted-search.elasticsearch.index', 'encrypted_search');
         $service = app(ElasticsearchService::class);
 
+        $documents = [];
         foreach ($rows as $row) {
-            $id = "{$row['model_type']}_{$row['model_id']}_{$row['field']}_{$row['type']}_{$row['token']}";
-            $service->indexDocument($index, $id, $row);
+            $documents[] = [
+                'id' => "{$row['model_type']}_{$row['model_id']}_{$row['field']}_{$row['type']}_{$row['token']}",
+                'body' => $row,
+            ];
         }
+
+        $service->bulkIndex($index, $documents);
     }
 
     /**
@@ -239,6 +246,11 @@ trait HasEncryptedSearchIndex
      */
     public function scopeEncryptedExact(Builder $query, string $field, string $term): Builder
     {
+        $allowed = array_keys($this->getEncryptedSearchConfiguration());
+        if (!in_array($field, $allowed, true)) {
+            return $query->whereRaw('1=0');
+        }
+
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $normalized = Normalizer::normalize($term);
 
@@ -246,7 +258,8 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
-        $token = Tokens::exact($normalized, $pepper);
+        $context = static::class . '|' . $field;
+        $token = Tokens::exact($normalized, $pepper, $context);
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
@@ -288,22 +301,26 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
-        $token = Tokens::exact($normalized, $pepper);
+        $tokens = [];
+        foreach ($fields as $field) {
+            $context = static::class . '|' . $field;
+            $tokens[] = Tokens::exact($normalized, $pepper, $context);
+        }
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
-            $modelIds = $this->searchElasticsearchMulti($fields, $token, 'exact');
+            $modelIds = $this->searchElasticsearchMulti($fields, $tokens, 'exact');
             return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
         }
 
         // Fallback to database - use OR logic for multiple fields
-        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $token) {
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
                 ->where('model_type', static::class)
                 ->whereIn('field', $fields)
                 ->where('type', 'exact')
-                ->where('token', $token)
+                ->whereIn('token', $tokens)
                 ->distinct();
         });
     }
@@ -318,6 +335,11 @@ trait HasEncryptedSearchIndex
      */
     public function scopeEncryptedPrefix(Builder $query, string $field, string $term): Builder
     {
+        $allowed = array_keys($this->getEncryptedSearchConfiguration());
+        if (!in_array($field, $allowed, true)) {
+            return $query->whereRaw('1=0');
+        }
+
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $minLength = (int) config('encrypted-search.min_prefix_length', 1);
         $normalized = Normalizer::normalize($term);
@@ -331,11 +353,13 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
+        $context = static::class . '|' . $field;
         $tokens = Tokens::prefixes(
             $normalized,
             (int) config('encrypted-search.max_prefix_depth', 6),
             $pepper,
-            $minLength
+            $minLength,
+            $context
         );
 
         // If no tokens generated (term too short), return no results
@@ -358,7 +382,7 @@ trait HasEncryptedSearchIndex
                 ->where('field', $field)
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
-        })->orderByRaw("LENGTH({$field}) ASC");
+        })->orderByRaw('LENGTH(' . $query->getGrammar()->wrap($field) . ') ASC');
     }
 
     /**
@@ -390,34 +414,38 @@ trait HasEncryptedSearchIndex
             return $query->whereRaw('1=0');
         }
 
-        $tokens = Tokens::prefixes(
-            $normalized,
-            (int) config('encrypted-search.max_prefix_depth', 6),
-            $pepper,
-            $minLength
-        );
+        $allTokens = [];
+        foreach ($fields as $field) {
+            $context = static::class . '|' . $field;
+            $fieldTokens = Tokens::prefixes(
+                $normalized,
+                (int) config('encrypted-search.max_prefix_depth', 6),
+                $pepper,
+                $minLength,
+                $context
+            );
+            $allTokens = array_merge($allTokens, $fieldTokens);
+        }
 
         // If no tokens generated (term too short), return no results
-        if (empty($tokens)) {
+        if (empty($allTokens)) {
             return $query->whereRaw('1=0');
         }
 
         // Check if Elasticsearch is enabled
         if (config('encrypted-search.elasticsearch.enabled', false)) {
-            $modelIds = $this->searchElasticsearchMulti($fields, $tokens, 'prefix');
+            $modelIds = $this->searchElasticsearchMulti($fields, $allTokens, 'prefix');
             return $query->whereIn($this->getQualifiedKeyName(), $modelIds);
         }
 
         // Fallback to database - use OR logic for multiple fields
-        // Note: Multi-field searches don't have relevance sorting due to database compatibility
-        // Use single-field searches for relevance-sorted results
-        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $tokens) {
+        return $query->whereIn($this->getQualifiedKeyName(), function ($sub) use ($fields, $allTokens) {
             $sub->select('model_id')
                 ->from('encrypted_search_index')
                 ->where('model_type', static::class)
                 ->whereIn('field', $fields)
                 ->where('type', 'prefix')
-                ->whereIn('token', $tokens)
+                ->whereIn('token', $allTokens)
                 ->distinct();
         });
     }
@@ -474,11 +502,13 @@ trait HasEncryptedSearchIndex
                     return $query->whereRaw('1=0');
                 }
 
+                $context = static::class . '|' . $field;
                 $tokens = Tokens::prefixes(
                     $normalized,
                     (int) config('encrypted-search.max_prefix_depth', 6),
                     $pepper,
-                    $minLength
+                    $minLength,
+                    $context
                 );
 
                 if (empty($tokens)) {
@@ -501,7 +531,8 @@ trait HasEncryptedSearchIndex
                 }
             } else {
                 // Exact match
-                $token = Tokens::exact($normalized, $pepper);
+                $context = static::class . '|' . $field;
+                $token = Tokens::exact($normalized, $pepper, $context);
 
                 // AND logic: intersect model IDs for each field-term pair
                 if ($useElastic) {
@@ -569,7 +600,7 @@ trait HasEncryptedSearchIndex
                 ],
             ],
             '_source' => ['model_id'],
-            'size' => 10000,
+            'size' => (int) config('encrypted-search.elasticsearch.max_results', 10000),
         ];
 
         try {
@@ -616,7 +647,7 @@ trait HasEncryptedSearchIndex
                 ],
             ],
             '_source' => ['model_id'],
-            'size' => 10000,
+            'size' => (int) config('encrypted-search.elasticsearch.max_results', 10000),
         ];
 
         try {
@@ -651,6 +682,13 @@ trait HasEncryptedSearchIndex
      */
     protected function getEncryptedSearchConfiguration(): array
     {
+        /** @var array<class-string, array<string, array<string, bool>>> $cache */
+        static $cache = [];
+
+        if (isset($cache[static::class])) {
+            return $cache[static::class];
+        }
+
         $config = [];
 
         // Auto-detect encrypted casts (if enabled)
@@ -674,6 +712,8 @@ trait HasEncryptedSearchIndex
         if (property_exists($this, 'encryptedSearch')) {
             $config = array_merge($config, $this->encryptedSearch);
         }
+
+        $cache[static::class] = $config;
 
         return $config;
     }

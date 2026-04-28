@@ -4,8 +4,8 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![Total Downloads](https://img.shields.io/packagist/dt/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![License](https://img.shields.io/github/license/ginkelsoft-development/laravel-encrypted-search-index.svg?style=flat-square)](LICENSE.md)
-[![Laravel](https://img.shields.io/badge/Laravel-8--12-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
-[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square&logo=php)](https://php.net)
+[![Laravel](https://img.shields.io/badge/Laravel-10--13-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
+[![PHP](https://img.shields.io/badge/PHP-8.2%20--%208.5-blue?style=flat-square&logo=php)](https://php.net)
 [![Elasticsearch](https://img.shields.io/badge/Search-DB%20or%20Elasticsearch-ff9900?style=flat-square&logo=elasticsearch)](#elasticsearch-integration)
 
 ## Overview
@@ -54,8 +54,10 @@ When you search, the package hashes your input using the same process and retrie
 
 For each configured field:
 
-* **Exact match token:** A SHA-256 hash of the normalized value + secret pepper.
+* **Exact match token:** A SHA-256 hash of the normalized value combined with a model-specific context and secret pepper.
 * **Prefix tokens:** Multiple SHA-256 hashes representing progressive prefixes of the normalized text (e.g. `w`, `wi`, `wie`).
+
+Tokens are scoped per model and field — the same value in `User.email` and `Client.email` produces different tokens, preventing cross-model correlation.
 
 ### 2. Token Storage
 
@@ -88,25 +90,12 @@ These use indexed lookups (DB or Elasticsearch) and remain performant even at sc
 To enable Elasticsearch as the storage and query backend for encrypted tokens, set the following in your `.env` file:
 
 ```
-ENCRYPTED_SEARCH_DRIVER=elasticsearch
+ENCRYPTED_SEARCH_ELASTIC_ENABLED=true
 ELASTICSEARCH_HOST=http://localhost:9200
 ELASTICSEARCH_INDEX=encrypted_search
 ```
 
-In `config/encrypted-search.php`:
-
-```php
-return [
-    'search_pepper' => env('SEARCH_PEPPER', ''),
-    'max_prefix_depth' => 6,
-
-    'elasticsearch' => [
-        'enabled' => env('ENCRYPTED_SEARCH_DRIVER', 'database') === 'elasticsearch',
-        'host' => env('ELASTICSEARCH_HOST', 'http://localhost:9200'),
-        'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
-    ],
-];
-```
+See the [Configuration](#configuration) section for the full `config/encrypted-search.php` reference, including authentication and result limits.
 
 When enabled, the package will **skip database writes** to `encrypted_search_index` and instead sync tokens directly to Elasticsearch via the `ElasticsearchService`.
 
@@ -151,12 +140,12 @@ The same token-based hashing rules apply — plaintext values must first be conv
 
 ## Security Model
 
-| Threat                  | Mitigation                                                        |
-| ----------------------- | ----------------------------------------------------------------- |
-| Database dump or breach | Tokens cannot be reversed (salted + peppered SHA-256).            |
-| Statistical analysis    | Tokens are detached; frequency analysis yields no correlation.    |
-| Insider access          | No sensitive data in index table; encrypted fields remain opaque. |
-| Leaked `APP_KEY`        | Irrelevant for tokens; pepper is stored separately in `.env`.     |
+| Threat                   | Mitigation                                                        |
+| ------------------------ | ----------------------------------------------------------------- |
+| Database dump or breach  | Tokens cannot be reversed (SHA-256 with pepper and context salt). |
+| Cross-model correlation  | Tokens are scoped per model and field; same value produces different tokens across models. |
+| Insider access           | No sensitive data in index table; encrypted fields remain opaque. |
+| Leaked `APP_KEY`         | Irrelevant for tokens; pepper is stored separately in `.env`.     |
 
 This design follows a **defense-in-depth** model: encrypted data stays secure, while search operations remain practical.
 
@@ -201,9 +190,18 @@ return [
 
     // Elasticsearch integration
     'elasticsearch' => [
-        'enabled' => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
-        'host' => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
-        'index' => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+        'enabled'     => env('ENCRYPTED_SEARCH_ELASTIC_ENABLED', false),
+        'host'        => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
+        'index'       => env('ELASTICSEARCH_INDEX', 'encrypted_search'),
+        'max_results' => env('ENCRYPTED_SEARCH_MAX_RESULTS', 10000),
+
+        'auth' => [
+            'type'     => env('ELASTICSEARCH_AUTH_TYPE'),       // 'basic', 'api_key', 'bearer', or null
+            'username' => env('ELASTICSEARCH_USERNAME'),
+            'password' => env('ELASTICSEARCH_PASSWORD'),
+            'api_key'  => env('ELASTICSEARCH_API_KEY'),
+            'token'    => env('ELASTICSEARCH_BEARER_TOKEN'),
+        ],
     ],
 
     // Debug logging
@@ -222,6 +220,8 @@ return [
 | `elasticsearch.enabled` | `false` | Use Elasticsearch instead of database for token storage |
 | `elasticsearch.host` | `http://elasticsearch:9200` | Elasticsearch host URL |
 | `elasticsearch.index` | `encrypted_search` | Elasticsearch index name |
+| `elasticsearch.max_results` | `10000` | Maximum number of results returned from Elasticsearch queries |
+| `elasticsearch.auth.type` | `null` | Authentication type: `basic`, `api_key`, `bearer`, or `null` for none |
 | `debug` | `false` | Enable debug logging for index operations |
 
 ### Minimum Prefix Length
@@ -273,6 +273,7 @@ class Client extends Model
     #[EncryptedSearch(exact: true, prefix: true)]
     public string $last_names;
 }
+```
 
 When a record is saved, searchable tokens are automatically generated in `encrypted_search_index` or synced to Elasticsearch.
 
@@ -314,10 +315,6 @@ Attributes always override global or $encryptedSearch configuration for the same
 
 ---
 
-#### ✅ 3. **Configuration block (insert this before `'elasticsearch' => [...]`)**
-```php
-'auto_index_encrypted_casts' => true,
-
 ## Rebuilding or Syncing the Search Index
 This command automatically detects whether you are using the database or Elasticsearch driver,
 and rebuilds the appropriate index accordingly.
@@ -347,13 +344,25 @@ The detached index structure scales linearly and supports millions of records ef
 
 | Laravel Version | Supported PHP Versions |
 |-----------------|------------------------|
-| **8.x**         | 8.0 – 8.1              |
-| **9.x**         | 8.1 – 8.2              |
-| **10.x**        | 8.1 – 8.3              |
-| **11.x**        | 8.2 – 8.3              |
-| **12.x**        | 8.3 and higher         |
+| **10.x**        | 8.2 – 8.3              |
+| **11.x**        | 8.2 – 8.4              |
+| **12.x**        | 8.3 – 8.5              |
+| **13.x**        | 8.4 – 8.5              |
 
 The package is continuously tested across all supported combinations using GitHub Actions.
+
+### Supported Databases
+
+The package is database-agnostic and works with any database supported by Laravel:
+
+| Database          | Status    |
+|-------------------|-----------|
+| **MySQL / MariaDB** | Fully supported |
+| **PostgreSQL**      | Fully supported |
+| **SQLite**          | Fully supported (used in CI tests) |
+| **SQL Server**      | Supported |
+
+Alternatively, **Elasticsearch** can be used as a dedicated search backend instead of the database.
 
 ---
 
@@ -374,8 +383,11 @@ Ensure your Elasticsearch container or service is running and reachable at the c
 If you haven’t created the Elasticsearch index yet, initialize it manually:
 ```bash
 curl -X PUT http://localhost:9200/encrypted_search
+```
+
+---
 
 ## License
 
 MIT License
-(c) 2025 Ginkelsoft
+(c) 2026 Ginkelsoft
