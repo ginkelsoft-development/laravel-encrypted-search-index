@@ -68,7 +68,7 @@ class MultiFieldSearchTest extends TestCase
         Schema::create('encrypted_search_index', function (Blueprint $table): void {
             $table->id();
             $table->string('model_type');
-            $table->unsignedBigInteger('model_id');
+            $table->string('model_id', 36);
             $table->string('field');
             $table->string('type');
             $table->string('token');
