@@ -371,7 +371,7 @@ trait HasEncryptedSearchIndex
                 ->where('field', $field)
                 ->where('type', 'prefix')
                 ->whereIn('token', $tokens);
-        })->orderByRaw('LENGTH(`' . str_replace('`', '``', $field) . '`) ASC');
+        })->orderByRaw('LENGTH(' . $query->getGrammar()->wrap($field) . ') ASC');
     }
 
     /**
