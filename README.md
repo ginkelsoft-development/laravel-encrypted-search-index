@@ -362,6 +362,19 @@ The detached index structure scales linearly and supports millions of records ef
 
 The package is continuously tested across all supported combinations using GitHub Actions.
 
+### Supported Databases
+
+The package is database-agnostic and works with any database supported by Laravel:
+
+| Database          | Status    |
+|-------------------|-----------|
+| **MySQL / MariaDB** | Fully supported |
+| **PostgreSQL**      | Fully supported |
+| **SQLite**          | Fully supported (used in CI tests) |
+| **SQL Server**      | Supported |
+
+Alternatively, **Elasticsearch** can be used as a dedicated search backend instead of the database.
+
 ---
 
 ## Compliance
