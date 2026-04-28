@@ -244,6 +244,11 @@ trait HasEncryptedSearchIndex
      */
     public function scopeEncryptedExact(Builder $query, string $field, string $term): Builder
     {
+        $allowed = array_keys($this->getEncryptedSearchConfiguration());
+        if (!in_array($field, $allowed, true)) {
+            return $query->whereRaw('1=0');
+        }
+
         $pepper = (string) config('encrypted-search.search_pepper', '');
         $normalized = Normalizer::normalize($term);
 
