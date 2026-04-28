@@ -77,6 +77,7 @@ trait HasEncryptedSearchIndex
         $useElastic = config('encrypted-search.elasticsearch.enabled', false);
 
         $rows = [];
+        $now = now();
 
         foreach ($config as $field => $modes) {
             // Skip fields that don't have an encrypted cast
@@ -102,8 +103,8 @@ trait HasEncryptedSearchIndex
                     'field'      => $field,
                     'type'       => 'exact',
                     'token'      => Tokens::exact($normalized, $pepper),
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
             }
 
