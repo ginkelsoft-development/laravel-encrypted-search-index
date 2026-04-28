@@ -4,8 +4,8 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![Total Downloads](https://img.shields.io/packagist/dt/ginkelsoft/laravel-encrypted-search-index.svg?style=flat-square)](https://packagist.org/packages/ginkelsoft/laravel-encrypted-search-index)
 [![License](https://img.shields.io/github/license/ginkelsoft-development/laravel-encrypted-search-index.svg?style=flat-square)](LICENSE.md)
-[![Laravel](https://img.shields.io/badge/Laravel-9--13-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
-[![PHP](https://img.shields.io/badge/PHP-8.1%20--%208.4-blue?style=flat-square&logo=php)](https://php.net)
+[![Laravel](https://img.shields.io/badge/Laravel-10--13-brightgreen?style=flat-square&logo=laravel)](https://laravel.com)
+[![PHP](https://img.shields.io/badge/PHP-8.2%20--%208.5-blue?style=flat-square&logo=php)](https://php.net)
 [![Elasticsearch](https://img.shields.io/badge/Search-DB%20or%20Elasticsearch-ff9900?style=flat-square&logo=elasticsearch)](#elasticsearch-integration)
 
 ## Overview
@@ -355,11 +355,10 @@ The detached index structure scales linearly and supports millions of records ef
 
 | Laravel Version | Supported PHP Versions |
 |-----------------|------------------------|
-| **9.x**         | 8.1 – 8.2              |
-| **10.x**        | 8.1 – 8.3              |
-| **11.x**        | 8.2 – 8.3              |
-| **12.x**        | 8.3 – 8.4              |
-| **13.x**        | 8.3 and higher          |
+| **10.x**        | 8.2 – 8.3              |
+| **11.x**        | 8.2 – 8.4              |
+| **12.x**        | 8.3 – 8.5              |
+| **13.x**        | 8.4 – 8.5              |
 
 The package is continuously tested across all supported combinations using GitHub Actions.
 
